@@ -67,11 +67,14 @@ function TokenFor(settings, url) {
   return secondary.length > 0 ? secondary : String(settings.primaryToken ?? '');
 }
 
-// Ready is the question EngineChoice.Decide asks before it hands a page over, and
-// it exists because "an address is set" and "a server can be used" are different
-// statements. Without it, a fresh install -- which ships with the hosted address
-// and no device token, because a token is issued per device -- would dial, be
-// refused at the handshake, and be told the servers were unreachable.
+// Ready is the question EngineChoice.Decide asks on its automatic path before it
+// hands a page over, and the question the settings screen answers in the status
+// line. It exists because "an address is set" and "a server can be used" are
+// different statements. Without it, a fresh install -- which ships with the
+// hosted address and no device token, because a token is issued per device --
+// would dial, be refused at the handshake, and be told the servers were
+// unreachable. It no longer decides whether a page is drawn on the device: as of
+// Round 19 an explicit server choice stays the server choice either way.
 function Ready(settings) {
   if (!settings) return false;
   if (settings.remoteEnabled !== true) return false;

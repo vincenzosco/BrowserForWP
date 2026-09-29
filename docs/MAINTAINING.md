@@ -89,9 +89,10 @@ node tools/proto/remote-protocol.mjs
 node tools/proto/remote-input.mjs
 node tools/proto/remote-input.mjs --probe
 
-# The engine-choice rule: what the automatic fallback decides, and the row that
-# matters most — an absent measurement is never grounds for switching engines.
-# Must print "38/38 checks passed".
+# The engine-choice rule: which setting may fall back to the device engine, and
+# the two rows that matter most — an absent measurement is never grounds for
+# switching engines, and an explicit Server choice is never answered with a page
+# from the device engine. Must print "42/42 checks passed".
 node tools/proto/engine-choice.mjs
 
 # The shell and delivery guards that arrived with the merged browser shell.
@@ -1596,6 +1597,11 @@ The decision table, which is now the file's whole contract:
 | Auto | yes | at or past the threshold | the hosted server |
 | Auto | no | at or past the threshold | Trident, reason `EngineReasonRemoteNotConfigured` |
 
+> The second and third `Remote` rows are superseded by Round 19: an explicit
+> Server choice is no longer rewritten into a page on the device, and
+> `MayFallBackToDevice` is the rule that decides when the announced fallback may
+> happen at all.
+
 **The fallback is announced, not silent.** When the hosted engine reports
 `EngineReasonRemoteNotConfigured` or `EngineReasonRemoteUnreachable`, those two
 keys are not page errors: they are the default engine failing to be an engine, and
@@ -2054,6 +2060,83 @@ labels reading as words.
 **Not verified:** the remote engine on a device (the table of blank rows) and the
 audio path. Both as before.
 
+### Round 19 — the server engine draws the page, or nothing does
+
+**Asked for:** force page rendering onto the server and never the device, and
+explain the whole configuration in the README. One decision was taken with the
+owner while the plan was written: the device engine stays reachable **as a
+choice** (System WebView, Automatic) and stops being a **fallback** for an
+explicit Server choice.
+
+**What changed, and the argument for it.** `EngineChoice.Decide` returned
+`Trident` for an explicit `Remote` whenever `RemoteServers.Ready` said no, and
+`OnRemoteNavigated` handed the page to the on-device engine whenever the server
+reported `…NotConfigured` or `…Unreachable`. Both were argued at the time as
+honesty -- "wanting the hosted engine is not having it", "a browser that renders
+nothing is not a browser" -- and both were a silent change of renderer under a
+setting that says otherwise: a person who picks **Server** said WHERE pages come
+from, and substituting the device engine answers a different question. The
+fallback is now the property of the setting that ASKS for it.
+
+| Setting | Usable server | Measurement | Engine |
+| --- | --- | --- | --- |
+| Trident | any | any | Trident |
+| Remote | yes | any | the hosted server |
+| **Remote** | **no** | any | **the hosted server, which draws nothing: reason `EngineReasonRemoteNotConfigured`** |
+| Auto | yes | no measurement | Trident |
+| Auto | yes | below the threshold | Trident |
+| Auto | yes | at or past the threshold | the hosted server |
+| Auto | no | at or past the threshold | Trident, reason `EngineReasonRemoteNotConfigured` |
+
+`EngineChoice.MayFallBackToDevice(setting)` is False for `Remote` and True for
+everything else, and it is the rule the shell asks: the announced fallback in
+`OnRemoteNavigated` is now gated on `IsHostedEngineUnusable(e.StatusKey) AndAlso
+EngineChoice.MayFallBackToDevice(_appSettings.EngineSetting)`. The branch that is
+left reports `EngineForcedRemoteNoPage` followed by the reason, so a misconfigured
+install gets the sentence that says nothing will be drawn and where the fix is,
+rather than a page from the engine nobody chose. `EngineReasonRemoteUnreachable`
+still carries the address that failed, in parentheses, because that one is a
+token; `…NotConfigured`'s engine detail is an English developer string and is not
+shown.
+
+**The referee had to be turned around, and that is the part worth reading.** Its
+old source contracts asserted the OPPOSITE (`Decide consults readiness on the
+explicit path`, "on the automatic path too", two occurrences of `If hostedReady
+Then Return Remote`). They now assert one occurrence on the automatic path, that
+the explicit path has no readiness branch at all, that `MayFallBackToDevice` is
+what the shell gates on, and that the leftover branch names the new key. Both
+mutations were run by hand and refused: reinstating the readiness branch in
+`EngineChoice.vb`, and deleting the gate from `MainPage`. The first version of the
+new negative pattern also matched `Explain`'s own `If wanted = Remote Then` /
+`If hostedReady Then …`, and it is anchored on `Return Remote` now -- a source
+contract that fails for a reason unrelated to what it names is worse than none.
+
+**The two strings that said the old thing.** `RemoteNotice`, the disclosure in
+Settings, promised that switching the server off would "keep every page on this
+phone", which is what it no longer does; it now says that with no address, token
+or switch nothing is drawn at all, and that another engine is the way to read
+pages on the phone. `EngineForcedRemoteNoPage` is new, in both languages.
+
+**Documentation, which was half the request.** Both READMEs gained a
+**Configuring the hosted renderer** section (the server, the certificate, port
+8443, `BFWP_MAX_SESSIONS`, the device token, the four phone fields, what to
+expect) and their **Hosted renderer by default** row no longer promises the
+fallback. The server repository's README had a defect of its own: step 3 told the
+operator to run `docker compose exec render node bin/bfwp-device.js add`, the
+exact command `bin/bfwp-device.sh` exists to replace, which writes a root-owned
+registry the server cannot then read -- it names the wrapper now, and the closing
+paragraph about a server that "costs nothing but a missing picture" is corrected,
+because the missing picture is the whole cost.
+
+**Verified:** `engine-choice.mjs` **42/42** with both mutations refused,
+`core-logic.mjs` 73 assertions, `remote-servers.mjs` 24/24, `check-vb.mjs` 16
+groups over 17 categories and 0 finding(s), the other sixteen referees unchanged,
+four solution configurations `BUILD_EXIT=0`.
+**Not verified:** the no-page state on glass. It is one more row of the table
+below, and that table is still blank -- `MayFallBackToDevice` is exercised
+off-device, but the empty page, the error strip and the localized sentence have
+never been seen on a handset.
+
 ## The loop
 
 Every change follows five steps, in order. The canonical version lives in
@@ -2089,7 +2172,7 @@ What is and is not covered:
 | `tools/proto/remote-protocol.mjs` | The render protocol's wire format: header, every encoder and decoder, the frame splitter, and the AEAD seal both ways, checked byte-for-byte against `protocol/vectors.json` — which the SERVER's own code produced. The only statement of the protocol that neither implementation wrote. 100 checks, including both values of `FOCUS` and its refusal of a third. | `node`, on any machine. |
 | `BrowserForWP/Strings/**/Resources.resw`, and the map name in `BrowserForWP.Localization/Localizer.vb` | Two languages, one key set (61 keys), AND the name of the resource map the code asks WinRT for — the question parity was not asking, and one whose wrong answer runs silently. Round 18. | `node tools/check-vb.mjs`, group 6. The map-name inference is justified by a measurement of the built `resources.pri`, recorded in Round 18, because the PRI itself is a per-platform build output and is not committed. |
 | `tools/proto/remote-servers.mjs` | `RemoteServers.vb`: url normalisation, the primary/secondary order, duplicate collapsing, and the source contract that Core holds resource keys and not prose. | `node`, on any machine. |
-| `tools/proto/engine-choice.mjs` | The `EngineChoice` decision table, plus the source contract around it: the constants by name, and the reasons as resource keys rather than sentences. | `node`, on any machine. |
+| `tools/proto/engine-choice.mjs` | The `EngineChoice` decision table -- including that an explicit Server choice is never the device engine, and that `MayFallBackToDevice` is False for it -- plus the source contract around it: the constants by name, the readiness branch on the automatic path only, the shell's gate, and the reasons as resource keys rather than sentences. | `node`, on any machine. |
 | `tools/check-vb.mjs` | 17 categories / 16 check groups over every `.vb`, `.vbproj`, `.xaml` and `.resw`, including every `{ThemeResource}` key, every project's flavour GUID and the factory GUID and separators of every `BrowserForWP.sln` entry, (group 13) doc-comment structure, (group 15) every privileged API name and every manifest capability that would ask the platform for something it cannot grant, (group 16) every API whose capability the manifest fails to declare, and (group 17) every declaration that names a VB keyword. | `node`, on any machine. |
 | `tools/keyword-probe/`, `tools/keyword-probe.cmd` | One `Dim <word> As Integer` per candidate, compiled by the real vbc, so group 17's list is measured rather than quoted. Batched, with a per-batch sentinel, because vbc 12 stops after about a hundred errors **with no message** and the first single-file version read that truncation as "legal". | `bash`, with the guest reachable. |
 | `tools/wp81-theme-keys.sh` | Regenerates `tools/wp81-theme-keys.txt`, the 523 theme-resource keys Windows Phone 8.1 defines, read from the guest's design dictionaries. | `bash`, with the guest reachable. |
@@ -2132,10 +2215,11 @@ exactly one row will ever fill it: a real device.
 
 | Step | Expected | Result |
 | --- | --- | --- |
-| Fresh install, nothing configured by hand | The address is the hosted server and the token is empty, so the page is drawn **on the phone** and the status line says the hosted server is not ready. Nothing is sent anywhere. | |
+| Fresh install, nothing configured by hand | The address is the hosted server and the token is empty, so **no page is drawn**, and the status line and the settings screen say the hosted server is not ready. Nothing is sent anywhere, and nothing is drawn on the device either (Round 19). | |
 | Paste the token from `bfwp-device add` | The next page is drawn by the server, and the status line names the server that answered. | |
-| Clear the address, keep the token | Back to the device-rendered state, with the reason on screen. | |
-| Stop the server, then navigate | The page is drawn on the device and the status line says the hosted server did not answer -- after the secondary, if one is set. | |
+| Clear the address, keep the token | Nothing is drawn, with the reason on screen. | |
+| Stop the server, then navigate | Nothing is drawn; the error strip says the servers did not answer and names the address. Choosing System WebView (Trident) in the picker draws the same page on the device. | |
+| Pick Automatic, then stop the server and navigate | The page IS drawn on the device and the status line says the hosted server did not answer -- the fallback Automatic keeps, and the one an explicit Server choice no longer gets. | |
 | Type a url in the address bar | The page is drawn by the server. | |
 | Tap a link | The navigation happens on the server and a new frame arrives. | |
 | Scroll | The scroll happens server-side; the frame follows. | |
@@ -2157,7 +2241,7 @@ exactly one row will ever fill it: a real device.
 | The input path holds its contracts (one field, gated writes, rotation, key names, a tap that is not a request to type, a keyboard the page controls) | `node tools/proto/remote-input.mjs` → `11/11`, and `--probe` refuses all 12 planted defects |
 | The wire format reproduces the server's own bytes, including both values of `FOCUS` | `node tools/proto/remote-protocol.mjs` → `100/100 checks passed` |
 | The primary/secondary rule, url normalisation and the readiness rule hold | `node tools/proto/remote-servers.mjs` → `24/24`; `node tools/proto/core-logic.mjs` → `72 assertions, 0 failure(s)` |
-| The engine decision table holds, including the hosted default and its fallback | `node tools/proto/engine-choice.mjs` → `38/38`, and the two mutations that remove the readiness branch are refused |
+| The engine decision table holds, including the hosted default and the setting that may fall back | `node tools/proto/engine-choice.mjs` → `42/42`, and the two mutations that reinstate the device fallback are refused |
 | The SERVER works, end to end, against a real deployment | `bin/bfwp-smoke.js` in `Docker-BrowserForWP` → `10/10`: TLS 1.3, a sealed `NAVIGATE`, a real 480x800 JPEG from Chromium, the `ACK` releasing the next frame, and a tap that reports an editable focus. Run 2026-09-29 against `34.132.106.149`, from another machine and from inside the container |
 | No mechanical defect of the seventeen checked kinds | `node tools/check-vb.mjs` → `16 check groups run, 0 finding(s)` |
 | It compiles, for real, on the phone's toolchain | Six configurations, `BUILD_EXIT=0`: Debug/ARM, Debug/x86, Release/ARM, Release/x86 as solution builds, and Debug/Release as `Any CPU` app-project builds. Only the two deliberate `BC40000` warnings. |

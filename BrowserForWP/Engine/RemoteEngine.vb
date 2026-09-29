@@ -574,9 +574,10 @@ Namespace Engine
         ''' <summary>
         ''' A failure carries the page that was asked for, not an empty string.
         '''
-        ''' The shell needs it: when the hosted engine cannot be used at all, the page
-        ''' is handed to the on-device engine, and that engine has to be pointed at
-        ''' the page the person asked for. `_session.ActiveTab.Url` is the PREVIOUS
+        ''' The shell needs it: when the setting allows a fallback and the hosted
+        ''' engine cannot be used at all, the page is handed to the on-device engine,
+        ''' and that engine has to be pointed at the page the person asked for.
+        ''' `_session.ActiveTab.Url` is the PREVIOUS
         ''' page, so a fallback that read it would quietly load the wrong one -- and
         ''' look like it worked.
         ''' </summary>

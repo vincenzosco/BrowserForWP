@@ -6,11 +6,19 @@
 ' reads, no I/O — so tools/proto/engine-choice.mjs can execute it off-device and
 ' tests/BrowserForWP.Core.Tests can compile it.
 '
-' The hosted engine is the default this build ships with, and the reason the
-' usable question comes first is that a default is not a promise that the server
-' exists: an install that has not been registered against one renders on the
-' device and says so, rather than sending a page nowhere or showing nothing at
-' all. See ARCHITECTURE.md Law 5.
+' AN EXPLICIT CHOICE IS NOT A PREFERENCE THAT LOSES TO AN ERROR. Two of the three
+' answers can put a page on the server, and they are not the same statement. A
+' person who picks Remote has said WHERE pages come from, so an unusable server
+' leaves them with the server engine and a reason on screen -- never with a page
+' drawn by the very engine they did not choose, which was a silent change of
+' renderer under a setting that said otherwise. Auto is the setting for somebody
+' who would rather let a measurement decide, and it is the only one that may hand
+' a page to the device because the server could not take it.
+'
+' What is still asked before a page goes to the server is whether the server is
+' usable at all: an address, a device token and its switch on. RemoteServers.Ready
+' answers it, Auto consults it, and that is where "a default is not a promise that
+' the server exists" is enforced. See ARCHITECTURE.md Law 5.
 '
 ' The row of the table that matters most is the one about an ABSENT measurement.
 ' ProbeReport.CouldRun = False means nothing was measured, and this project has
@@ -64,28 +72,26 @@ Namespace Engine
         End Function
 
         ''' <summary>
-        ''' The engine to use. The HOSTED engine is what this build is set to, and
-        ''' that is the first thing this function has to be careful about: wanting it
-        ''' is not the same as being able to use it. `hostedReady` says whether the
-        ''' hosted renderer has an address, a device token and its switch on -- what
-        ''' RemoteServers.Ready answers -- and it is consulted BEFORE the choice is
-        ''' returned, so an install that has not been registered against a server
-        ''' renders on the device instead of sending pages nowhere.
+        ''' The engine to use. An explicit Trident choice wins over everything, and
+        ''' an explicit Remote choice is honoured as written: this function does NOT
+        ''' fall back to the device for it. Handing a page to the on-device engine
+        ''' when somebody has chosen the server would be a silent change of renderer
+        ''' under a setting that says otherwise, and what it hides is exactly what
+        ''' the status line exists to report. The engine itself still refuses to draw
+        ''' anything it cannot: RemoteEngine checks its own readiness on every
+        ''' navigation and raises the reason, so a misconfigured install gets the
+        ''' reason and no page rather than a page from the wrong engine.
         '''
-        ''' An explicit Trident choice still wins over everything: a person who asked
-        ''' for the system engine keeps it. An explicit Auto consults the
-        ''' measurement, and the measurement can only move a page onto the hosted
-        ''' engine when that engine is usable at all.
+        ''' Auto is the setting that may use either, and `hostedReady` -- whether the
+        ''' hosted renderer has an address, a device token and its switch on, the
+        ''' answer RemoteServers.Ready gives -- is consulted on that path, before a
+        ''' page is handed to a server that is not there.
         ''' </summary>
         Public Shared Function Decide(setting As String, hostedReady As Boolean,
                                       probeMeasured As Boolean, missingFeatureCount As Integer) As String
             Dim wanted As String = Normalize(setting)
             If wanted = Trident Then Return Trident
-
-            If wanted = Remote Then
-                If hostedReady Then Return Remote
-                Return Trident
-            End If
+            If wanted = Remote Then Return Remote
 
             If Not probeMeasured Then Return Trident
             If missingFeatureCount < AutomaticFallbackThreshold Then Return Trident
@@ -117,6 +123,17 @@ Namespace Engine
             If missingFeatureCount < AutomaticFallbackThreshold Then Return "EngineReasonAutoFits"
             If hostedReady Then Return "EngineReasonAutoTooManyMissingFeatures"
             Return "EngineReasonRemoteNotConfigured"
+        End Function
+
+        ''' <summary>
+        ''' Whether a page the hosted engine could not draw may be handed to the
+        ''' on-device engine. False for an explicit Remote: the shell asks this
+        ''' before its announced fallback, so a page is never drawn by an engine its
+        ''' reader did not choose. True otherwise, because Auto asks for whichever
+        ''' engine works and Trident never needs a fallback at all.
+        ''' </summary>
+        Public Shared Function MayFallBackToDevice(setting As String) As Boolean
+            Return Normalize(setting) <> Remote
         End Function
 
     End Class

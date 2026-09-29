@@ -1331,18 +1331,24 @@ Public NotInheritable Class MainPage
 
         If Not e.IsSuccess Then
             ' Two of the failure reasons do not describe a page: they describe the
-            ' DEFAULT engine not being usable as an engine at all -- no server
-            ' configured, or none answering. Handing those to the error strip would
-            ' leave a person with a blank screen where the browser should be, so the
-            ' page goes to the on-device engine instead, which is the answer
-            ' EngineChoice.Decide would have given had it known.
+            ' server engine not being usable as an engine at all -- no server
+            ' configured, or none answering.
             '
-            ' Falling back QUIETLY is the other half of the mistake: the status line
-            ' names the engine that drew the page and the reason the other one did
-            ' not, because "this is not the engine you chose" is exactly the thing a
-            ' person must not have to guess. The remaining reasons are real page
+            ' WHAT HAPPENS NEXT DEPENDS ON WHICH ENGINE WAS ASKED FOR, and that is
+            ' the distinction this branch exists for. Automatic asks for whichever
+            ' engine works, so the page goes to the on-device engine and the status
+            ' line names the engine that drew it and why the other one did not --
+            ' because "this is not the engine you chose" is exactly the thing a person
+            ' must not have to guess. An explicit Server choice is not a preference
+            ' that loses to an error: it is where somebody said pages come from, so
+            ' substituting the device engine would answer a different question under
+            ' a setting that says otherwise. That case falls through to the branch
+            ' below, which says nothing was drawn rather than drawing it somewhere
+            ' else. EngineChoice.MayFallBackToDevice is the rule, asked here, so the
+            ' decision is not written twice. The remaining reasons are real page
             ' errors and keep the behavior below.
-            If IsHostedEngineUnusable(e.StatusKey) Then
+            If IsHostedEngineUnusable(e.StatusKey) AndAlso
+               EngineChoice.MayFallBackToDevice(_appSettings.EngineSetting) Then
                 Dim reason As String = Localizer.Get(e.StatusKey)
                 Dim wantedUrl As String = e.Url
                 If String.IsNullOrEmpty(wantedUrl) Then
@@ -1351,6 +1357,24 @@ Public NotInheritable Class MainPage
                 UseEngine(EngineChoice.Trident)
                 StatusText.Text = Localizer.Get("EngineFallbackOnDevice") & "  " & reason
                 _engine.Navigate(wantedUrl)
+                RefreshTabsList()
+                Return
+            End If
+
+            ' The server engine was asked for by name, so a page that could not be
+            ' drawn there is not drawn anywhere. The engine's own detail is a
+            ' developer string and is shown only for the unreachable case, where it
+            ' names the address that failed; "not configured" is already spelled out
+            ' by the reason in two languages.
+            If IsHostedEngineUnusable(e.StatusKey) Then
+                StatusText.Text = String.Empty
+                ErrorText.Text = Localizer.Get("EngineForcedRemoteNoPage") & "  " &
+                                 Localizer.Get(e.StatusKey)
+                If e.StatusKey = "EngineReasonRemoteUnreachable" AndAlso
+                   Not String.IsNullOrEmpty(e.Detail) Then
+                    ErrorText.Text = ErrorText.Text & " (" & e.Detail & ")"
+                End If
+                ErrorText.Visibility = Visibility.Visible
                 RefreshTabsList()
                 Return
             End If
@@ -1383,10 +1407,13 @@ Public NotInheritable Class MainPage
 
     ''' <summary>
     ''' The failure reasons that mean "the hosted engine could not be used", as
-    ''' opposed to "the page failed". Named in one place so the fallback above and
+    ''' opposed to "the page failed". Named in one place so the branches above and
     ''' any future reader agree on which reasons cause a change of engine; the two
-    ''' keys are the ones EngineChoice.Explain returns when it hands a page to the
-    ''' on-device engine, and the referee tools/proto/engine-choice.mjs pins them.
+    ''' keys are the ones EngineChoice.Explain returns when the server cannot take a
+    ''' page, and the referee tools/proto/engine-choice.mjs pins them. WHETHER a
+    ''' change of engine follows is a second question, answered by
+    ''' EngineChoice.MayFallBackToDevice -- this list is only "these two are not
+    ''' about the page".
     ''' </summary>
     Private Shared Function IsHostedEngineUnusable(statusKey As String) As Boolean
         Return statusKey = "EngineReasonRemoteNotConfigured" OrElse

@@ -564,21 +564,25 @@ check('en-US never removed', SupportedTags[0] === 'en-US');
 // ── The engine-choice rule (mirror of CoreLogicTests.vb) ──────────────────
 // tools/proto/engine-choice.mjs refuses this exhaustively; these are the rows
 // the compiled half must agree on too. Two of them matter most: the third, about
-// an absent measurement, and the second, about the hosted engine being the
-// default -- a default is not a promise that the server exists, so wanting it is
-// not enough to get it.
+// an absent measurement, and the second, about an explicit server choice -- the
+// person named where pages come from, so an unusable server leaves them with the
+// server engine and a reason, never with a page from the device engine. Auto is
+// the setting that may take the device instead, and a default is still not a
+// promise that the server exists.
 function chooseEngine(setting, hostedReady, measured, missing) {
   const wanted = setting === 'trident' || setting === 'remote' ? setting : 'auto';
   if (wanted === 'trident') return 'trident';
-  if (wanted === 'remote') return hostedReady ? 'remote' : 'trident';
+  if (wanted === 'remote') return 'remote';
   if (!measured) return 'trident';
   if (missing < 8) return 'trident';
   return hostedReady ? 'remote' : 'trident';
 }
 check('engine choice: a ready hosted server is used when chosen',
   chooseEngine('remote', true, false, 0) === 'remote');
-check('engine choice: the default engine is not used before it is configured',
-  chooseEngine('remote', false, false, 0) === 'trident');
+check('engine choice: the server engine stays chosen when it is not configured',
+  chooseEngine('remote', false, false, 0) === 'remote');
+check('engine choice: an explicit server choice is never the device engine',
+  chooseEngine('remote', false, true, 99) === 'remote');
 check('engine choice: explicit trident wins over a broken probe',
   chooseEngine('trident', true, true, 99) === 'trident');
 check('engine choice: auto never switches on an absent measurement',
@@ -635,10 +639,10 @@ check('servers: the secondary falls back to the primary token',
   tokenFor('https://backup.example.com', 'https://backup.example.com', 'primary-token', '') === 'primary-token');
 
 // "Can the hosted engine be used at all", the question EngineChoice.Decide asks
-// before it hands a page over. It is not the same statement as "an address is
-// set": a fresh install ships the hosted address and no device token, because a
-// token is issued per device, and dialling with no token is refused at the
-// handshake one round trip after everything looked fine.
+// on its automatic path before it hands a page over. It is not the same statement
+// as "an address is set": a fresh install ships the hosted address and no device
+// token, because a token is issued per device, and dialling with no token is
+// refused at the handshake one round trip after everything looked fine.
 const readyServer = (primaryUrl, primaryToken, secondaryUrl, secondaryToken, enabled) =>
   enabled === true && orderServers(primaryUrl, secondaryUrl)
     .some((url) => tokenFor(url, secondaryUrl, primaryToken, secondaryToken).length > 0);

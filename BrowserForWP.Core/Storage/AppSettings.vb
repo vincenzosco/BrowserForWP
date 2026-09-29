@@ -30,9 +30,11 @@ Namespace Storage
         ''' It is an address and not a credential. The device token is issued per
         ''' device by the server's own `bfwp-device add` and pasted in by hand, so an
         ''' install that has not been registered is pointed at a server it cannot
-        ''' use yet -- which RemoteServers.Ready reports as "not configured" and
-        ''' EngineChoice turns into the on-device engine, rather than a page sent
-        ''' nowhere. See ARCHITECTURE.md Law 5 for what this default discloses.
+        ''' use yet -- which RemoteServers.Ready reports as "not configured", and
+        ''' which the settings screen says out loud. No page is drawn until a token
+        ''' is pasted: the server engine is the one this install asked for, and
+        ''' EngineChoice does not answer a request for the server with a page from
+        ''' the device. See ARCHITECTURE.md Law 5 for what this default discloses.
         '''
         ''' No port: the render channel's own port is RemoteEngine.DefaultPort
         ''' (8443), and the port lives there so that a url which spells one out can
@@ -82,9 +84,10 @@ Namespace Storage
         '''
         ''' Remote is the default: pages are drawn by the hosted server, because on
         ''' this platform that is the only engine that can draw a modern page at all.
-        ''' What keeps that honest is EngineChoice.Decide, which falls back to the
-        ''' on-device engine whenever the hosted one is not usable, and Auto for the
-        ''' people who would rather let the measurement decide.
+        ''' What keeps that honest is EngineChoice.Decide, which keeps an explicit
+        ''' Remote even when the hosted server is not usable -- no page, and the
+        ''' reason on screen -- and leaves the fallback to the device engine to Auto,
+        ''' for the people who would rather let the measurement decide.
         ''' </summary>
         Public Property EngineSetting As String
 

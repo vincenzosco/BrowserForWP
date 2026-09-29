@@ -12,6 +12,11 @@
 //   * The constants are read by name from MainPage, so a rename here that this
 //     file did not notice is a build error there. Asserted rather than trusted.
 //
+// Since Round 19 it also carries the rule that an explicit choice is not a
+// preference that loses to an error: an explicit Remote comes back as Remote
+// whatever the server's readiness says, and a page may be handed to the device
+// engine only where MayFallBackToDevice allows it.
+//
 // The decision table's most important row is the one about the ABSENT
 // measurement: an automatic fallback must not switch engines because a probe
 // never ran. `ProbeReport.CouldRun = False` means "nothing was measured", and
@@ -31,6 +36,7 @@ function readIfPresent(path) {
 
 const SOURCE = 'BrowserForWP.Core/Engine/EngineChoice.vb';
 const SOURCE_ENGINE = 'BrowserForWP/Engine/RemoteEngine.vb';
+const MAINPAGE = 'BrowserForWP/MainPage.xaml.vb';
 
 // ── The transliterated rule ────────────────────────────────────────────────
 const Trident = 'trident';
@@ -46,10 +52,17 @@ function Normalize(setting) {
 function Decide(setting, hostedReady, probeMeasured, missingFeatureCount) {
   const choice = Normalize(setting);
   if (choice === Trident) return Trident;
-  if (choice === Remote) return hostedReady ? Remote : Trident;
+  if (choice === Remote) return Remote;
   if (!probeMeasured) return Trident;
   if (missingFeatureCount < Threshold) return Trident;
   return hostedReady ? Remote : Trident;
+}
+
+// Whether a page the server could not draw may be handed to the device engine.
+// False for an explicit Remote: the shell asks this before its announced
+// fallback, so no page is ever drawn by an engine its reader did not choose.
+function MayFallBackToDevice(setting) {
+  return Normalize(setting) !== Remote;
 }
 
 function Explain(setting, hostedReady, probeMeasured, missingFeatureCount) {
@@ -87,27 +100,39 @@ check('auto at the threshold switches to the remote engine',
 check('auto past the threshold stays switched',
   Decide(Auto, true, true, 99) === Remote);
 
-// The rule this build added when the hosted engine became the default one. A
-// default is not a promise that a server exists: an install that has not been
-// registered has an address and no token, and "draw the page on a machine we
-// cannot use" is not one of the available answers. The three rows below are the
-// whole point -- wanting the hosted engine is not having it, and the fallback is
-// to the engine that always exists.
-check('the default engine is not chosen while the server is unusable',
-  Decide(Remote, false, true, 0) === Trident);
-check('and it is not chosen with a healthy probe either',
-  Decide(Remote, false, true, 99) === Trident);
-check('it is chosen as soon as the server is usable',
-  Decide(Remote, true, false, 0) === Remote);
-check('the reason names the missing configuration, not the page',
+// THE RULE THE ROUND THAT WROTE THIS CHANGED, and the one the file is now about:
+// two of the three answers can put a page on the server, and they are not the
+// same statement. An explicit Remote is where the reader said pages come from,
+// so an unusable server leaves them with the server engine and a reason on
+// screen -- never with a page drawn by the engine they did NOT choose. The four
+// rows below are the whole point.
+check('an explicit remote choice is kept when the server is not configured',
+  Decide(Remote, false, true, 0) === Remote);
+check('and it is kept with a healthy probe too',
+  Decide(Remote, false, true, 99) === Remote);
+check('and switching the server OFF does not move the page onto the device engine',
+  Decide(Remote, false, false, 0) === Remote);
+check('the reason still names the missing configuration, not the page',
   Explain(Remote, false, true, 0) === 'EngineReasonRemoteNotConfigured');
+check('a configured server is still what an explicit remote choice gets',
+  Decide(Remote, true, false, 0) === Remote);
+
+// Which is only true if the shell asks this before it substitutes an engine. A
+// page may be handed to the device engine when the setting allows it -- Auto is
+// the setting that ASKS for whichever engine works -- and never when the reader
+// named the server.
+check('a page may fall back to the device engine on every setting but an explicit server',
+  MayFallBackToDevice(Trident) && MayFallBackToDevice(Auto)
+  && MayFallBackToDevice('native') && MayFallBackToDevice('') && MayFallBackToDevice('ie')
+  && !MayFallBackToDevice(Remote));
+
+// Auto is otherwise untouched: it consults readiness before it moves a page to
+// the server, and a default engine is still not a promise that a server exists.
 check('an automatic switch to an unusable server does not happen',
   Decide(Auto, false, true, 99) === Trident
   && Explain(Auto, false, true, 99) === 'EngineReasonRemoteNotConfigured');
 check('an automatic switch to a usable server still happens',
   Decide(Auto, true, true, 99) === Remote);
-check('switching a server OFF takes the hosted engine away even when it is addressed',
-  Decide(Remote, false, false, 0) === Trident);
 
 // The keyword this app used to store for the renderer it no longer has. An
 // upgrade that reads it must become indistinguishable from Auto -- and the
@@ -140,10 +165,10 @@ check('every reason is a resource key, not a sentence',
 check('the five reasons are five distinct keys',
   new Set(reasons).size === 5, reasons.join(', '));
 
-// The sixth key, reachable only now that the hosted engine is the default: it is
-// the reason a person sees when the engine they were promised is not set up, and
-// it is also the key the SHELL reads to decide whether to hand the page to the
-// device. Two files depend on that exact spelling.
+// The sixth key is the reason a person sees when the engine they chose is not set
+// up, and it is also one of the two keys the SHELL reads -- together with
+// MayFallBackToDevice -- to decide whether to hand the page to the device engine.
+// Two files depend on those exact spellings.
 check('the unusable-hosted reason is its own key',
   Explain(Remote, false, false, 0) === 'EngineReasonRemoteNotConfigured'
   && !reasons.includes('EngineReasonRemoteNotConfigured'));
@@ -156,6 +181,7 @@ check('a fallback that reloaded the session tab instead of the asked-for page is
 
 // ── The source contract ────────────────────────────────────────────────────
 const source = readIfPresent(SOURCE);
+const mainPage = readIfPresent(MAINPAGE);
 check(`${SOURCE} exists`, source.length > 0);
 check('it declares the three choices as constants',
   /Public Const Trident As String = "trident"/.test(source)
@@ -165,17 +191,29 @@ check('it declares the threshold as a named constant, not a magic number',
   /AutomaticFallbackThreshold As Integer = 8/.test(source));
 check('it is uninstantiable', /Private Sub New\(\)/.test(source));
 // A transliteration drifts silently, and this file is one: the checks above
-// execute the functions defined HERE, so a VB edit that deleted the readiness
-// branch would leave every one of them green. That is not a hypothetical -- the
-// first draft of this round's referee passed with the branch removed. These four
-// source checks are what make the rule above a statement about the VB rather than
-// about this file, and the mutation that removed the branch is refused by them.
-check('Decide consults readiness on the explicit path',
-  /If wanted = Remote Then\s*\n\s*If hostedReady Then Return Remote\s*\n\s*Return Trident\s*\n\s*End If/.test(source),
-  'wanting the hosted engine is not having it');
-check('Decide consults readiness on the automatic path too',
-  (source.match(/If hostedReady Then Return Remote/g) ?? []).length === 2,
-  'both paths that can return the hosted engine must ask first');
+// execute the functions defined HERE, so a VB edit that reinstated the old
+// fallback would leave every one of them green. That is not a hypothetical -- the
+// first draft of an earlier round's referee passed with the readiness branch
+// deleted from the VB. The source checks below are what make the rule above a
+// statement about the VB rather than about this file, and both mutations are
+// refused by them: re-adding a readiness branch to the explicit path, and
+// deleting the shell's gate.
+check('Decide honours an explicit remote choice and has no readiness branch for it',
+  /If wanted = Remote Then Return Remote/.test(source)
+  && !/If wanted = Remote Then\s*\n\s*If hostedReady Then Return Remote/.test(source),
+  'an explicit server choice is not rewritten into a page on the device');
+check('Decide consults readiness on the automatic path, the only one that may ask',
+  (source.match(/If hostedReady Then Return Remote/g) ?? []).length === 1,
+  'a page may be moved to the server only when the server exists');
+check('MayFallBackToDevice is False for Remote and True for everything else',
+  /Public Shared Function MayFallBackToDevice\(setting As String\) As Boolean\s*\n\s*Return Normalize\(setting\) <> Remote/.test(source),
+  'the shell asks this before it hands a page to the device engine');
+check('the shell gates its announced fallback on that rule',
+  /If IsHostedEngineUnusable\(e\.StatusKey\)[\s\S]{0,400}MayFallBackToDevice\(_appSettings\.EngineSetting\)/.test(mainPage),
+  'a page must not be handed to the device engine when the reader chose the server');
+check('and the branch that is left says nothing will be drawn on the device',
+  /EngineForcedRemoteNoPage/.test(mainPage),
+  'the reason alone does not say that the device engine will not substitute itself');
 check('Explain reports the missing configuration rather than a page problem',
   (source.match(/Return "EngineReasonRemoteNotConfigured"/g) ?? []).length === 2);
 check('Explain never reports a page problem for an unusable server',

@@ -282,6 +282,9 @@
   <data name="EngineFallbackOnDevice" xml:space="preserve">
     <value>Disegnata sul dispositivo, dal motore di sistema.</value>
   </data>
+  <data name="EngineForcedRemoteNoPage" xml:space="preserve">
+    <value>Nessuna pagina: è scelto il motore server e sul dispositivo non viene disegnato nulla.</value>
+  </data>
   <data name="EngineReasonRemoteSecondary" xml:space="preserve">
     <value>Il server primario non ha risposto, quindi si sta usando il secondario.</value>
   </data>
@@ -340,7 +343,7 @@
   </data>
   <!-- Server remoto: dove sono disegnate le pagine, e cosa costa -->
   <data name="RemoteNotice" xml:space="preserve">
-    <value>Le pagine sono disegnate dal server, quindi chi lo gestisce può leggere tutto quello che leggi tu, password comprese. Questa build punta già al server ospitato del progetto e ha quel motore come predefinito: disattiva l'interruttore per tenere ogni pagina su questo telefono, oppure sostituisci l'indirizzo con un server tuo.</value>
+    <value>Le pagine sono disegnate dal server, quindi chi lo gestisce può leggere tutto quello che leggi tu, password comprese. Questa build punta già al server ospitato del progetto e ha quel motore come predefinito, e quella scelta resta: senza indirizzo e token qui sotto, o con l'interruttore spento, non viene disegnato nulla, invece di disegnare su questo telefono. Scegli un altro motore qui sopra per leggere le pagine su questo telefono, oppure sostituisci l'indirizzo con un server tuo.</value>
   </data>
   <data name="RemoteServerLabel" xml:space="preserve">
     <value>Indirizzo del server</value>

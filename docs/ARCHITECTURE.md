@@ -118,15 +118,25 @@ somebody else's machine, and it changes what the browser IS:
   -- `AppSettings.DefaultHostedUrl` is the project's own server -- so the question
   is live from the first page rather than from whenever somebody finds a settings
   screen.
-- A default is not a promise that the server exists, so the rule is that wanting
-  the hosted engine is not having it. `EngineChoice.Decide` asks
-  `RemoteServers.Ready` first: an address, a device token and the switch on. A
-  fresh install has the address and no token, because a token is issued per device
-  by the server and pasted in by hand, so its first page is drawn **on the phone**
-  with the reason on screen. If the server stops answering, the same rule hands the
-  page to the on-device engine and says so in the status line -- a browser that
-  renders nothing is not a browser, and a silent change of engine would be worse
-  than either.
+- **The two ways a page can end up on a server are not the same statement, and the
+  rule keeps them apart.** An explicit `Remote` setting is where somebody said
+  pages come from: `EngineChoice.Decide` returns it whatever
+  `RemoteServers.Ready` says, so an install not yet registered against a server
+  draws **nothing** and shows the reason, rather than a page from the engine it did
+  not choose. Substituting the device engine there would answer a different
+  question, silently, under a setting that says otherwise -- worse than an empty
+  page with an explanation. `Auto` is the setting that asks for whichever engine
+  works, so it is the only one that consults readiness -- an address, a device
+  token and the switch on -- before a page is handed to the server. The shell's
+  announced fallback asks the same question through
+  `EngineChoice.MayFallBackToDevice`: when the server reports
+  `EngineReasonRemoteNotConfigured` or `EngineReasonRemoteUnreachable`, the page
+  goes to the on-device engine only where that rule allows it, and otherwise the
+  status line says that nothing was drawn and why.
+- A device token is issued per device by the server and pasted in by hand, so a
+  fresh install is configured at nothing but the address: its first page is not
+  drawn at all, with the settings screen saying what to fill in, until somebody
+  registers the phone -- or picks another engine.
 - The device holds no page. No script runs locally, so Find, Reading mode and
   night mode are Trident features and are disabled on this engine rather than
   pretending to work.

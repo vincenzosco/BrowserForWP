@@ -29,7 +29,7 @@ sistema, non un limite delle ambizioni di questo progetto.
 | **HTTPS moderno** | La `WebView` di sistema negozia ciò che Schannel supporta. | `Tls13Client` + resolver DNS-over-HTTPS + pinning dei certificati per il livello di trasporto dell'app. Il pin non copre però il canale di rendering del motore remoto: `Tls13Client` accetta un host e nessuna tabella di pin. La lacuna è registrata in `docs/MAINTAINING.md`, non lasciata da scoprire. |
 | **Pagine web moderne** | IE11 non riesce a interpretare né a eseguire il JavaScript moderno. | Un bundle di compatibilità ES5 sul dispositivo (`BrowserForWP.Polyfill`) iniettato a `DOMContentLoaded` e di nuovo al completamento, più una diagnostica che spiega *perché* un sito ha fallito. Il bundle alza il livello minimo ma non può interpretare la sintassi ES6 né fornire `Proxy`/`Intl`/grid — vedi l'elenco qui sotto. |
 | **Un motore da zero** | Su questo sistema non si può costruire un motore *al posto di* Trident, e Trident non è riconfigurabile (vedi [`docs/MAINTAINING.md`](docs/MAINTAINING.md), sezione *IE-adaptation is closed*). | Una **pipeline di documenti** vive in `BrowserForWP.Core/Engine/Native`: recupera una pagina attraverso il trasporto TLS 1.3 dell'app — l'unico percorso di questo prodotto che può caricare qualcosa sopra TLS 1.2 — e analizza un **sottoinsieme dichiarato** di HTML e CSS producendo un albero di box, visibile in **Diagnostica → Analizza la pagina corrente**. **Non esegue JavaScript** e mai lo farà. Un *renderer* sul dispositivo per quell'albero è stato costruito nel Round 7 e **cancellato nel Round 10**: era una cosa più piccola di un browser, e mantenere due renderer per dimostrarlo era lo scambio sbagliato (Legge 5). |
-| **Renderer ospitato per impostazione predefinita** | — | Ogni componente — crittografia, TLS, DNS, polyfill, cronologia, localizzazione — gira sul telefono. L'eccezione è il *rendering*, ed è l'eccezione predefinita: le pagine vanno a un server che le disegna con Chromium, e **chi gestisce quel server può leggere tutto quello che leggi tu, password comprese**. L'indirizzo esce già impostato sul server ospitato di questo progetto. Puoi puntarlo a un server tuo, oppure disattivarlo e tenere ogni pagina sul telefono: la Legge 5 in `docs/ARCHITECTURE.md` è il costo completo, e le Impostazioni lo dicono accanto all'interruttore. Un dispositivo non ancora registrato, o un server che non risponde, ripiegano sul motore sul dispositivo e lo scrivono nella barra di stato. |
+| **Renderer ospitato per impostazione predefinita** | — | Ogni componente — crittografia, TLS, DNS, polyfill, cronologia, localizzazione — gira sul telefono. L'eccezione è il *rendering*, ed è l'eccezione predefinita: le pagine vanno a un server che le disegna con Chromium, e **chi gestisce quel server può leggere tutto quello che leggi tu, password comprese**. L'indirizzo esce già impostato sul server ospitato di questo progetto. Puoi puntarlo a un server tuo, oppure scegliere un altro motore e tenere ogni pagina sul telefono: la Legge 5 in `docs/ARCHITECTURE.md` è il costo completo, e le Impostazioni lo dicono accanto all'interruttore. Un dispositivo non ancora registrato, o un server che non risponde, **non disegnano alcuna pagina** finché è scelto il motore server, e scrivono perché: scegliere il server è una dichiarazione su dove vengono le pagine, e l'app non risponde con una pagina disegnata dal motore che non hai scelto. **Configurare il renderer ospitato** qui sotto è tutta la sequenza, e **Automatico** è l'impostazione che può disegnare sul telefono. |
 
 > **Sull'idea del proxy locale sul dispositivo:** i Windows AppContainer
 > bloccano per impostazione predefinita il traffico verso `127.0.0.1`, quindi un
@@ -46,6 +46,101 @@ alza il livello minimo per i siti che rilevano le funzionalità, ma non può
 correggere la sintassi ES6 né le funzionalità motore mancanti. L'astrazione del motore significa che il giorno in cui punterai
 questo codice a un dispositivo con un motore moderno vero, i livelli di
 trasporto e contenuto verranno con te.
+
+---
+
+## Configurare il renderer ospitato
+
+Il server è il motore con cui questa build esce impostata, e non ripiega in
+silenzio: finché **Impostazioni → Motore di rendering** dice **Server (Chromium
+remoto)**, una pagina è disegnata dal server o non è disegnata affatto, e la
+barra di stato dice quale delle due. Devono incontrarsi due metà — un server che
+risponde e un telefono registrato presso di lui — e questa è tutta la sequenza.
+
+### 1. Avvia il server
+
+Il server è un repository separato,
+[`Docker-BrowserForWP`](https://github.com/vincenzosco/Docker-BrowserForWP): un
+listener TLS 1.3 davanti a un Chromium vero. Il telefono non scarica mai la
+pagina — manda l'url e riceve fotogrammi JPEG — quindi nulla della pagina, dei suoi
+script o dei suoi cookie si trova sul dispositivo.
+[`docs/DEPLOY.md`](https://github.com/vincenzosco/Docker-BrowserForWP/blob/main/docs/DEPLOY.md)
+è la procedura completa per un host tuo; in breve:
+
+```bash
+git clone https://github.com/vincenzosco/Docker-BrowserForWP
+cd Docker-BrowserForWP
+
+# Un certificato vero in ./tls: il telefono convalida la catena e il nome (o
+# l'indirizzo) prima di mandare un byte, quindi uno autofirmato viene rifiutato.
+export BFWP_PUBLIC_URL=https://render.example.com:8443     # IL TUO indirizzo
+docker compose up -d --build
+```
+
+Tre cose che falliscono solo sul telefono, quindi vale la pena controllarle prima:
+
+- **La porta 8443 deve essere raggiungibile.** È il canale di rendering
+  (`BFWP_PORT`, predefinita `8443`); aprila nel firewall dell'host.
+- **Il certificato deve convalidarsi sul telefono**: la catena *e* il nome o
+  l'indirizzo che gli hai dato. Senza un dominio, Let's Encrypt emette per un
+  indirizzo IP sotto il profilo `shortlived` da sei giorni, e `docs/DEPLOY.md`
+  installa il timer di rinnovo che un certificato così non può sopravvivere.
+- **`BFWP_MAX_SESSIONS` è un tetto di memoria.** Una pagina viva ha misurato
+  ~231 MiB; il valore predefinito di 16 nel compose presuppone 2,5 GB e oltre.
+
+### 2. Registra il telefono e conserva il token
+
+Ogni dispositivo ha bisogno di un token proprio, e il server lo stampa **una sola
+volta**:
+
+```bash
+docker compose exec render bin/bfwp-device.sh add "il mio telefono"
+```
+
+Stampa un id dispositivo e un token; viene conservato solo lo SHA-256 del token,
+quindi non è più rileggibile (esegui di nuovo `add` se lo perdi). I sottocomandi
+`list`, `disable <id>`, `enable <id>` e `remove <id>` gestiscono il resto, e non
+serve riavviare: il server rilegge il registro quando il file cambia. Il wrapper e
+non `node bin/bfwp-device.js`: l'immagine parte come root, e un registro scritto
+come root è un registro che il server stesso non riesce a leggere.
+
+### 3. Punta il telefono al server
+
+Sul telefono, **Impostazioni → Server**:
+
+| Campo | Cosa inserire |
+| --- | --- |
+| *Indirizzo del server* | L'indirizzo per cui è emesso il certificato, schema incluso: `https://render.example.com`, oppure `https://203.0.113.9` per un certificato di indirizzo. La porta non serve — quella del canale di rendering (8443) viene aggiunta, a meno che l'url non ne indichi un'altra. |
+| *Token del dispositivo* | Il token del punto 2. |
+| *Disegna le pagine sul server* | Attivo. |
+| *Indirizzo / token del server di riserva* (facoltativo) | Un secondo server, provato solo se il primario non risponde. Usa il token del primario quando il suo è vuoto, così un dispositivo registrato può coprirli entrambi. |
+
+Poi **Impostazioni → Motore di rendering → Server (Chromium remoto)**, che è
+l'impostazione con cui questa build esce. La riga sotto il selettore dichiara la
+decisione: *"Scelto nelle Impostazioni: le pagine sono disegnate dal server che hai
+configurato…"* quando indirizzo, token e interruttore concordano, oppure *"Il
+server ospitato non è pronto: servono l'indirizzo e il token di questo
+dispositivo"* finché non lo fanno.
+
+### 4. Cosa aspettarsi, anche quando non funziona
+
+- **Sul dispositivo non viene disegnato nulla finché è scelto il motore server.**
+  Un server non configurato o che non risponde lascia vuota l'area della pagina,
+  con il motivo scritto sullo schermo. È deliberato: ripiegare cambierebbe in
+  silenzio chi disegna la tua pagina, sotto un'impostazione che dice altro.
+- **Per leggere le pagine sul telefono**, scegli **WebView di sistema (Trident)** o
+  **Automatico** nello stesso selettore. *Automatico* disegna sul telefono e passa
+  al server solo per le pagine che la sua sonda di compatibilità dichiara
+  ingestibili per Trident; è anche l'unica impostazione che può ripiegare sul
+  telefono quando un server smette di rispondere.
+- **Per provare un server prima di coinvolgere un telefono**: nel repository del
+  server, `node bin/bfwp-smoke.js --host <host> --port 8443 --device <id> --token <token> --verify`
+  stampa `10/10` quando l'intero percorso funziona — TLS 1.3, una pagina disegnata
+  da Chromium, un tocco che la raggiunge.
+- **Quanto costa, di nuovo**: il TLS termina su quella macchina, quindi le pagine
+  e le password che contengono sono in chiaro nella sua memoria. Il rendering
+  remoto è questo. L'interruttore, l'indirizzo e la barra di stato sono le tre cose
+  su cui puoi agire.
 
 ---
 

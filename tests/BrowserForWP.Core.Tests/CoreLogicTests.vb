@@ -61,15 +61,19 @@ Namespace CoreTests
             ran += 1
 
             ' The engine-choice rule. Refused exhaustively off-device by
-            ' tools/proto/engine-choice.mjs; these five are the rows that also have
-            ' to hold in the compiled half. Two of them matter most: an absent
-            ' measurement is never grounds for switching engines, and the hosted
-            ' engine -- which is the default this build ships -- is NOT chosen until
-            ' it is usable, so a default install renders on the device.
+            ' tools/proto/engine-choice.mjs; these are the rows that also have to
+            ' hold in the compiled half. Two of them matter most: an absent
+            ' measurement is never grounds for switching engines, and an explicit
+            ' server choice is never answered with the device engine -- the server
+            ' engine is where that person said pages come from, so an unusable
+            ' server leaves them with the reason on screen and no page, and only
+            ' Auto may take the device instead.
             Check(EngineChoice.Decide(EngineChoice.Remote, True, False, 0) = EngineChoice.Remote,
                   "engine choice: a ready hosted server is used when chosen")
-            Check(EngineChoice.Decide(EngineChoice.Remote, False, False, 0) = EngineChoice.Trident,
-                  "engine choice: the default engine is not used before it is configured")
+            Check(EngineChoice.Decide(EngineChoice.Remote, False, False, 0) = EngineChoice.Remote,
+                  "engine choice: the server engine stays chosen when it is not configured")
+            Check(EngineChoice.Decide(EngineChoice.Remote, False, True, 99) = EngineChoice.Remote,
+                  "engine choice: an explicit server choice is never the device engine")
             Check(EngineChoice.Decide(EngineChoice.Trident, True, True, 99) = EngineChoice.Trident,
                   "engine choice: explicit trident wins over a broken probe")
             Check(EngineChoice.Decide(EngineChoice.Auto, True, False, 99) = EngineChoice.Trident,
@@ -78,6 +82,10 @@ Namespace CoreTests
                   "engine choice: auto switches at the threshold")
             Check(EngineChoice.Explain(EngineChoice.Remote, False, True, 0) = "EngineReasonRemoteNotConfigured",
                   "engine choice: an unusable hosted server says so, as a key")
+            Check(Not EngineChoice.MayFallBackToDevice(EngineChoice.Remote),
+                  "engine choice: a chosen server is not replaced by the device engine")
+            Check(EngineChoice.MayFallBackToDevice(EngineChoice.Auto),
+                  "engine choice: automatic may still fall back")
             ran += 1
 
             ' The three engine shapes. The third is the defect this property had:

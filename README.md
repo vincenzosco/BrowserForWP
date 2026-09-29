@@ -25,7 +25,7 @@ project's ambition.
 | **Modern HTTPS** | The system `WebView` negotiates whatever Schannel supports. | `Tls13Client` + DNS-over-HTTPS resolver + certificate pinning for the app's transport layer. |
 | **Modern web pages** | IE11 cannot parse or run modern JavaScript. | An on-device ES5 compatibility bundle (`BrowserForWP.Polyfill`) injected at `DOMContentLoaded` and again on completion, plus a compatibility diagnostic that tells you *why* a given site failed. The bundle raises the floor but cannot parse ES6 syntax or supply `Proxy`/`Intl`/grid — see the disclosure below. |
 | **A from-scratch engine** | No new engine can be built *instead of* Trident on this OS, and Trident cannot be re-configured (see [`docs/MAINTAINING.md`](docs/MAINTAINING.md) § *IE-adaptation is closed*). | A **document pipeline** lives in `BrowserForWP.Core/Engine/Native`: it fetches a page over the app's own TLS 1.3 transport — the only path in this product that can load anything above TLS 1.2 — and parses a **declared subset** of HTML and CSS into a box tree, visible under **Diagnostics → Parse current page**. It does **not** execute JavaScript and never will. An on-device *renderer* for that tree was built in Round 7 and **deleted in Round 10**: it was a smaller thing than a browser, and maintaining two renderers to prove that was the wrong trade (Law 5). |
-| **Hosted renderer by default** | — | Every component — crypto, TLS, DNS, polyfills, history, localization — runs on the handset. The *rendering* is the exception, and it is the default one: pages go to a server that draws them in Chromium, and **whoever runs that server can read everything you read, passwords included**. The address ships set to this project's own hosted server. You can point it at a server you run, or switch it off and keep every page on the phone — `docs/ARCHITECTURE.md` Law 5 is the full cost, and Settings states it next to the switch. A device that is not registered yet, or a server that does not answer, falls back to the on-device engine and says so in the status line. |
+| **Hosted renderer by default** | — | Every component — crypto, TLS, DNS, polyfills, history, localization — runs on the handset. The *rendering* is the exception, and it is the default one: pages go to a server that draws them in Chromium, and **whoever runs that server can read everything you read, passwords included**. The address ships set to this project's own hosted server. You can point it at a server you run, or choose another engine and keep every page on the phone — `docs/ARCHITECTURE.md` Law 5 is the full cost, and Settings states it next to the switch. A device that is not registered yet, or a server that does not answer, draws **no page at all** while the server engine is chosen and says why: choosing the server is a statement about where pages come from, and the app does not answer it with a page from the engine you did not choose. **Configuring the hosted renderer** below is the whole sequence, and **Automatic** is the setting that may render on the phone. |
 
 > **On the on-device loopback proxy idea:** Windows AppContainers block
 > `127.0.0.1` traffic by default, so a local proxy cannot feed the system
@@ -39,6 +39,98 @@ page at `DOMContentLoaded` and again on completion; it raises the floor for
 feature-detecting sites but cannot fix ES6 syntax or missing engine features.
 The engine abstraction means the day you point this at a device with a real
 modern engine, the transport and content layers come with you.
+
+---
+
+## Configuring the hosted renderer
+
+The server is the engine this build ships set to, and it does not quietly fall
+back: while **Settings → Rendering engine** says **Server (Chromium remotely)**, a
+page is drawn by the server or not at all, and the status line says which. Two
+halves have to meet — a server that answers, and a phone registered with it — and
+this is the whole sequence.
+
+### 1. Run the server
+
+The server is a separate repository,
+[`Docker-BrowserForWP`](https://github.com/vincenzosco/Docker-BrowserForWP): a
+TLS 1.3 listener in front of a real Chromium. The phone never fetches the page —
+it sends the url and receives JPEG frames — so nothing of the page, its scripts or
+its cookies is on the device.
+[`docs/DEPLOY.md`](https://github.com/vincenzosco/Docker-BrowserForWP/blob/main/docs/DEPLOY.md)
+there is the full walkthrough for a host of your own; in short:
+
+```bash
+git clone https://github.com/vincenzosco/Docker-BrowserForWP
+cd Docker-BrowserForWP
+
+# A real certificate in ./tls: the phone validates the chain and the name (or the
+# address) before it sends a byte, so a self-signed one is refused.
+export BFWP_PUBLIC_URL=https://render.example.com:8443     # YOUR address
+docker compose up -d --build
+```
+
+Three things that fail only on the phone, and so are worth checking first:
+
+- **Port 8443 has to be reachable.** That is the render channel (`BFWP_PORT`,
+  default `8443`); open it in the host's firewall.
+- **The certificate has to validate on the handset**: the chain *and* the name or
+  address the phone was given. With no domain, Let's Encrypt issues for a bare
+  address under its six-day `shortlived` profile, and `docs/DEPLOY.md` installs
+  the renewal timer such a certificate cannot outlive.
+- **`BFWP_MAX_SESSIONS` is a memory ceiling.** One live page measured ~231 MiB;
+  the compose default of 16 assumes 2.5 GB and up.
+
+### 2. Register the phone, and keep the token
+
+Every device needs a token of its own, and the server prints it **once**:
+
+```bash
+docker compose exec render bin/bfwp-device.sh add "my phone"
+```
+
+It prints a device id and a token; only the token's SHA-256 is stored, so it
+cannot be read back later (run `add` again if it is lost). The subcommands
+`list`, `disable <id>`, `enable <id>` and `remove <id>` manage the rest, and no
+restart is needed: the server re-reads the registry when the file changes. The
+wrapper and not `node bin/bfwp-device.js`: the image starts as root, and a
+registry written as root is one the server itself cannot read.
+
+### 3. Point the phone at it
+
+On the handset, **Settings → Server**:
+
+| Field | What goes in it |
+| --- | --- |
+| *Server address* | The address the certificate is for, scheme included: `https://render.example.com`, or `https://203.0.113.9` for an address certificate. No port is needed — the render channel's own port (8443) is added unless a url spells out another one. |
+| *Device token* | The token from step 2. |
+| *Draw pages on the server* | On. |
+| *Backup server address / token* (optional) | A second server, tried only when the primary does not answer. It borrows the primary's token when its own is empty, so one registered device can cover both. |
+
+Then **Settings → Rendering engine → Server (Chromium remotely)**, which is what
+this build ships with. The line under the picker states the decision: *"Chosen in
+Settings: the server you configured draws these pages…"* once the address, the
+token and the switch agree, or *"The hosted server is not ready: it needs an
+address and this device's token"* until they do.
+
+### 4. What to expect, including when it does not work
+
+- **Nothing is drawn on the device while the server engine is chosen.** An
+  unconfigured or unreachable server leaves the page area empty, with the reason
+  on screen. That is deliberate: falling back would quietly change who draws your
+  page, under a setting that says otherwise.
+- **To read pages on the phone instead**, pick **System WebView (Trident)** or
+  **Automatic** in the same picker. *Automatic* draws on the phone and moves to
+  the server only for pages its compatibility probe says Trident cannot cope
+  with; it is also the only setting that may fall back to the phone when a server
+  stops answering.
+- **To test a server before a phone is involved**: in the server repository,
+  `node bin/bfwp-smoke.js --host <host> --port 8443 --device <id> --token <token> --verify`
+  prints `10/10` when the whole path works — TLS 1.3, a page drawn by Chromium, a
+  tap that reaches it.
+- **What it costs, again**: TLS terminates on that machine, so the pages and the
+  passwords in them are plaintext in its memory. That is what remote rendering is.
+  The switch, the address and the status line are the three things you can act on.
 
 ---
 
