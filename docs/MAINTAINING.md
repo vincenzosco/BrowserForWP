@@ -903,11 +903,20 @@ the interface, so the shell wires whichever engine it built and therefore knows
     `RESIZE`, and `tools/proto/remote-input.mjs` asserts all three parts. The item
     is kept rather than deleted so that a reader who remembers the gap finds it
     closed instead of gone.
-15. **The remote engine has never spoken to a server.** No part of the handshake,
-    the frame loop, the tile decode, the 1/dpr scale, the tap and scroll mapping,
-    the soft-keyboard proxy or the audio path has run against a live session.
-    `docs/MAINTAINING.md` § "The remote engine, verified by hand" is the table, and
-    its rows are blank.
+15. **CLOSED FOR THE SERVER, STILL OPEN FOR THE PHONE.** This item used to be one
+    flat sentence: the remote engine has never spoken to a server. Half of it is
+    now false, measured on 2026-09-29. `Docker-BrowserForWP` was deployed to a VM
+    and `bin/bfwp-smoke.js` -- a real client, added for this -- completed sessions
+    against it: TLS 1.3, the handshake, a sealed `NAVIGATE`, a 480x800 JPEG drawn
+    by Chromium, the `ACK` releasing the next frame, and the `FOCUS` behaviour of a
+    tap, `10/10` three times in a row, from another machine over an SSH tunnel and
+    from inside the container. What that does NOT touch is any line of the VB:
+    `RemoteScreen`, `RemoteEngine`, the soft-keyboard proxy, the 1/dpr scale and
+    the audio element have still never run on a handset, because the phone needs a
+    certificate from a real CA for a name it can validate and port 8443 opened. So
+    § "The remote engine, verified by hand" is still a table of blank rows, and the
+    distinction is stated rather than implied: the protocol and the server have
+    been verified end to end; the device has not.
 16. **CLOSED in Round 13 — the address IS shipped, by decision, and the cost is
     written down.** This item used to say the opposite: a default would send every
     page, and every password, through a machine the user did not choose, so the
@@ -1704,6 +1713,74 @@ browser; that part of the change has never been near a live page. Item 20 is the
 other half: a page that focuses a field by itself, and a re-tap on a field whose
 answer has not changed, both still raise nothing.
 
+### Round 15 — the server, on a real machine, answering a real client
+
+**Asked for:** put the render server on the `docker1` VM with `gcloud` and verify
+that it works. "It works" had never been tested: every previous round of
+`Docker-BrowserForWP` ended with the image never built and the Chromium paths
+covered by nothing at all.
+
+**What was done:** the repository cloned onto the VM, a self-signed certificate for
+the IP generated, the image built and the container started with
+`BFWP_MAX_SESSIONS=2`, a device registered, and a client written for the purpose --
+`bin/bfwp-smoke.js` in the server repository -- which dials the server, completes
+TLS 1.3, seals a `NAVIGATE`, receives a JPEG from Chromium, acknowledges it, taps a
+text field and checks the answer. It says **`10/10`**, three times in a row from
+this Mac over an SSH tunnel and again from inside the container.
+
+**Every failure it found was invisible to everything already in the repository,
+and there were four.** In order, because each one hid the next:
+
+- `docker compose build` refused the whole compose file: a named volume and a tmpfs
+  both mounted at `/run/bfwp`. No build had ever run the file.
+- The container restart-looped on `EACCES ... privkey.pem`. The server runs as
+  `pwuser` (uid 1000) and a bind mount keeps the HOST's owner, so a key written
+  `0600` by certbot or openssl is unreadable. The deploy notes' one-off `chown`
+  works until the next renewal, which rewrites the key as root, sixty days later,
+  on a timer. There is now an entrypoint that stages a readable copy and drops to
+  `pwuser`, and it took three more measured failures of its own (SETUID/SETGID and
+  CHOWN removed by `cap_drop: ALL`; and a `chmod` after a `chown` needing
+  CAP_FOWNER, fixed by swapping two lines).
+- The server then accepted a device, sealed frames, and could not launch a browser:
+  `package.json` declared `playwright: ">=1.40 <2"`, npm resolved it to 1.63.0, and
+  the base image ships 1.49.1's browsers. The version is pinned exactly and the
+  BUILD now reads it back and refuses to produce an image where the pair disagrees.
+- A device registered against the running server was refused with UNKNOWN_DEVICE
+  until a restart. `bfwp-device.js` writes the registry from a second process; the
+  server had read it once. It reloads on a changed file now, which is not only
+  convenience -- a `disable` the server cannot see is a lost phone that still
+  connects.
+
+**The client half of this round is empty, and that is the honest shape of it.** No
+line of VB changed, because nothing on the device could be exercised: the smoke
+client speaks the protocol from Node, which pins the wire format and the server's
+behaviour and says nothing about `RemoteScreen`, the soft-keyboard proxy or the
+picture.
+
+**The FOCUS message, verified on a real Chromium for the first time.** Round 14
+shipped it with the server half covered by a fake browser and the client half
+unrun. Against the live deployment: the load-time report is `editable=false`, a tap
+that lands on the text field reports `editable=true`, typing redraws the page, `Tab`
+moves the answer to the button, and a second tap on that button produces **no
+message at all** -- which is the deduplication the protocol promises, observed
+rather than asserted.
+
+**Measured, for the sizing question:** one live session with a page in it held its
+container at **231 MiB peak**. On this VM (953 MB) that is two or three devices, not
+the sixteen the compose default allows.
+
+**What is still not verified, and is now a short list with names on it.** The handset
+has never spoken to this deployment, and cannot yet: port 8443 is closed on the GCE
+firewall (no rule allows it), and the certificate is self-signed for the bare IP,
+which the phone refuses by design -- it validates the chain and the name before it
+sends a byte. Both are the owner's decisions to make, not gaps in the code. The audio
+capture still needs a sound device.
+
+**Verified:** `npm test` 155/155 in the server repository, `remote-protocol.mjs`
+100/100 and `remote-input.mjs` 11/11 with all twelve mutations refused in this one,
+the six configurations and `devenv` unchanged, and the deployment itself: healthy,
+seven devices registered, `10/10` from two directions.
+
 ## The loop
 
 Every change follows five steps, in order. The canonical version lives in
@@ -1769,7 +1846,11 @@ phone, no emulator and no Docker. The table below **is** the verification for th
 task, and it is **empty on purpose**. A row that was not run stays blank; filling
 one in from reading the code would make this table worth less than not having it.
 
-Ran it: 2026-09-29. Device: none available. Server: none reachable.
+Ran it: 2026-09-29. Device: none available. Server: **up and answering** since that
+date -- `Docker-BrowserForWP` runs on `34.132.106.149`, `bin/bfwp-smoke.js` says
+`10/10` against it, and every row below is still blank, because the rows are about
+the PHONE. The server half of them is verified elsewhere: see item 15, and
+"A deployment that answers, and a device that has not spoken to it" below.
 
 | Step | Expected | Result |
 | --- | --- | --- |
@@ -1799,6 +1880,7 @@ Ran it: 2026-09-29. Device: none available. Server: none reachable.
 | The wire format reproduces the server's own bytes, including both values of `FOCUS` | `node tools/proto/remote-protocol.mjs` → `100/100 checks passed` |
 | The primary/secondary rule, url normalisation and the readiness rule hold | `node tools/proto/remote-servers.mjs` → `24/24`; `node tools/proto/core-logic.mjs` → `72 assertions, 0 failure(s)` |
 | The engine decision table holds, including the hosted default and its fallback | `node tools/proto/engine-choice.mjs` → `38/38`, and the two mutations that remove the readiness branch are refused |
+| The SERVER works, end to end, against a real deployment | `bin/bfwp-smoke.js` in `Docker-BrowserForWP` → `10/10`: TLS 1.3, a sealed `NAVIGATE`, a real 480x800 JPEG from Chromium, the `ACK` releasing the next frame, and a tap that reports an editable focus. Run 2026-09-29 against `34.132.106.149`, from another machine and from inside the container |
 | No mechanical defect of the seventeen checked kinds | `node tools/check-vb.mjs` → `16 check groups run, 0 finding(s)` |
 | It compiles, for real, on the phone's toolchain | Six configurations, `BUILD_EXIT=0`: Debug/ARM, Debug/x86, Release/ARM, Release/x86 as solution builds, and Debug/Release as `Any CPU` app-project builds. Only the two deliberate `BC40000` warnings. |
 | The IDE's own project system still accepts the solution | `tools\vm-devenv.cmd` in the guest → `seven projects loaded and built`, `Rebuild All: 7 succeeded, 0 failed, 0 skipped`, `DEVENV_EXIT=0` |
