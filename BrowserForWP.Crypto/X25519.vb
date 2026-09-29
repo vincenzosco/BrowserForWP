@@ -240,10 +240,13 @@ Namespace Crypto
                 For pass As Integer = 1 To 3
                     Dim stable = True
                     For i As Integer = 0 To Limbs - 2
-                        Dim carry = t(i) >> 16
-                        If carry <> 0L Then stable = False
+                        ' Named `shifted` and not `carry`: this method IS Carry, and a local
+                        ' called carry hides it -- harmless here only because nothing in
+                        ' this method calls it. tools/check-vb.mjs reports the pattern.
+                        Dim shifted = t(i) >> 16
+                        If shifted <> 0L Then stable = False
                         t(i) = t(i) And Mask16
-                        t(i + 1) += carry
+                        t(i + 1) += shifted
                     Next
 
                     Dim overflow = t(Limbs - 1) >> 15

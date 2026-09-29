@@ -127,6 +127,33 @@ Settings: the server you configured draws these pages…"* once the address, the
 token and the switch agree, or *"The hosted server is not ready: it needs an
 address and this device's token"* until they do.
 
+### 3b. Or paste the token from a computer
+
+Typing a 43-character token on a 2014 soft keyboard is the step this exists to
+remove. In **Settings → Paste the token from another device**, press **Open the
+page**: the phone starts a small HTTP listener of its own and shows the **address
+to open on the computer** (`http://192.168.…:8777`) and a **four-digit code**. Type
+that address into a browser on a computer on the same Wi-Fi, paste the token, say
+whether it belongs to **Server 1 (primary)** or **Server 2 (backup, optional)**,
+retype the code, and submit. The phone then fills that server's **address and
+token**, turns *Draw pages on the server* on and switches the engine to **Server
+(Chromium remotely)** — there is nothing left to do on the handset. The reply masks
+the token to its last four characters instead of sending it back.
+
+Two limits are stated rather than implied:
+
+- **The page lives only while the Settings screen is open.** Closing Settings or
+  pressing **Close the page** stops the listener, and so does the **fifth wrong
+  code**.
+- **It is plain HTTP on your own network.** The token crosses the local Wi-Fi in
+  the clear, which is why the page is not reachable from the Internet and why the
+  code exists at all. Type the token by hand instead if you do not trust the
+  network you are on.
+
+The page cannot delete or change anything — it only fills fields. **To have a
+token removed, open an issue** on the project's page, quoting the device id the
+server printed.
+
 ### 4. What to expect, including when it does not work
 
 - **Nothing is drawn on the device while the server engine is chosen.** An

@@ -97,6 +97,7 @@
     <Compile Include="Diagnostics\NetDocumentFetcher.vb" />
     <Compile Include="Engine\RemoteChannel.vb" />
     <Compile Include="Engine\RemoteEngine.vb" />
+    <Compile Include="Engine\TokenPage.vb" />
     <Compile Include="Rendering\RemoteScreen.vb" />
     <Compile Include="MainPage.xaml.vb">
       <DependentUpon>MainPage.xaml</DependentUpon>

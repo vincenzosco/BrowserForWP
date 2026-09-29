@@ -980,7 +980,18 @@ function checkVb12Syntax() {
   for (const project of projects) {
     for (const src of walk(project.dir, (f) => f.endsWith('.vb'))) {
       const lines = cleanLines(fs.readFileSync(src, 'utf8'));
+      // An INTERFACE declares one-sided properties on purpose and has no bodies at
+      // all, so the auto-property rule below stops at its doors. The first run of
+      // this check reported IBrowserEngine.vb twice, which is the check being wrong
+      // about a legal construct rather than a defect in the interface.
+      let inInterface = false;
       lines.forEach((line, idx) => {
+        if (/^\s*(?:(?:Public|Private|Friend|Protected)\s+)?Interface\b/.test(line)) {
+          inInterface = true;
+        } else if (/^\s*End Interface\b/.test(line)) {
+          inInterface = false;
+        }
+
         // A code line ending in '.' is a chain continued on the next line.
         // Comments and string contents are already gone, so a sentence in a
         // comment or a '.' inside a literal cannot trigger this.
@@ -993,10 +1004,34 @@ function checkVb12Syntax() {
             idx + 1);
           anyBad = true;
         }
+
+        // A ReadOnly (or WriteOnly) Property with no Get/Set is an AUTO-implemented
+        // one-sided property, and one-sided auto-properties arrived in VB 14
+        // (VS2015). VB 12 answers BC30126 -- "a ReadOnly property must provide a
+        // Get" -- and then a BC30634 for every following line, each naming the wrong
+        // problem in the wrong place. Added after the guest build found exactly that
+        // in TokenInbox.vb, in a file this group had already passed: the compiler is
+        // still the only thing that reads VB, and this closes the gap it found.
+        if (!inInterface
+            && /^\s*(?:(?:Public|Private|Friend|Protected)\s+)?(?:Shared\s+)?(?:ReadOnly|WriteOnly)\s+Property\s+\w/.test(line)) {
+          const next = lines.slice(idx + 1).find((candidate) => candidate.trim().length > 0) ?? '';
+          if (!/^\s*(?:Get|Set)\b/.test(next) && !/\b(?:Get|Set)\b/.test(line)) {
+            fail('vb12', src,
+              'a one-sided Property with no Get/Set body: auto-implemented read-only '
+              + 'properties are VB 14, and VB 12 needs a backing field with an explicit '
+              + 'Get...End Get. The compiler reports this as BC30126 followed by a '
+              + 'BC30634 in every following line.',
+              idx + 1);
+            anyBad = true;
+          }
+        }
       });
     }
   }
-  if (!anyBad) ok('no leading-dot method chains (VB 12 cannot continue a line after ".")');
+  if (!anyBad) {
+    ok('no leading-dot method chains (VB 12 cannot continue a line after ".") and no '
+      + 'one-sided auto-properties (VB 14)');
+  }
 }
 
 // ── 12. Fine .NET-for-Windows-Store-apps profile hazards ──────────────────
@@ -1021,6 +1056,13 @@ const PROFILE_HAZARDS = [
     'Microsoft.VisualBasic.ControlChars is not in the Store profile (BC30451), even ' +
     'though Microsoft.VisualBasic.Strings (AscW, ChrW) is. Test whitespace with ' +
     'Char.IsWhiteSpace, or use the numeric Char code.'],
+  [/\.BeginInvoke\s*\(/,
+    "CoreDispatcher has RunAsync, not BeginInvoke: BeginInvoke belongs to WPF, and "
+    + "BC30456 reports it as not a member of Windows.UI.Core.CoreDispatcher, which "
+    + "reads like a typo in the code rather than a missing API. Use "
+    + "Dispatcher.RunAsync(CoreDispatcherPriority.Normal, New "
+    + "DispatchedHandler(AddressOf SomeMethod)). Found by the guest build in the "
+    + "token page, one round after this list was last added to."],
   [/\bFontStyles\b/,
     'System.Windows.FontStyles is WPF. The WinRT profile has no FontStyles helper at ' +
     'all (BC30451): XAML markup resolves FontStyle="Italic" through the enum, and code ' +
@@ -1359,6 +1401,11 @@ const CAPABILITY_REQUIREMENTS = [
     api: /\b(StreamSocket|WebView|NetworkInformation|HttpClient|DatagramSocket)\b/,
     note: 'Outbound network access. `internetClientServer` is a superset and '
       + 'satisfies this, which is what this package declares.' },
+  { capability: 'internetClientServer',
+    api: /\b(StreamSocketListener|WebViewControl)\b|\bBindServiceNameAsync\b/,
+    note: 'Accepting an INBOUND connection: a listener needs internetClientServer, '
+      + 'while internetClient on its own covers outbound traffic only. The token '
+      + 'page is the one listener in this project.' },
   { capability: 'location',
     api: /\b(Geolocator|Geoposition|Geocoordinate|Geofence|GeofenceMonitor|CivicAddressResolver)\b/,
     note: 'Geolocation, including the location a hosted page asks for through the '
@@ -1536,6 +1583,117 @@ function declaredNames(line) {
   return names;
 }
 
+// The gap this closes is the one the token page's twenty-nine new strings walked
+// into: a key typed wrong is not an exception, it is the key's own name printed on
+// a screen, and nothing in this project noticed one until somebody read the page on
+// a phone. The catalogue is the two .resw files, which checkResourceParity already
+// keeps in step with each other.
+function checkLocalizerKeys() {
+  heading('Localizer keys (every literal key the code asks for exists)');
+
+  const catalogue = new Set();
+  for (const file of walk(ROOT, (f) => f.endsWith('Resources.resw'))) {
+    for (const m of fs.readFileSync(file, 'utf8').matchAll(/<data name="([^"]+)"/g)) {
+      catalogue.add(m[1]);
+    }
+  }
+
+  // Only LITERAL keys are checkable from here. A key built from a variable or by
+  // concatenation -- Localizer.Get(EngineChoice.Explain(...)) is one -- cannot be
+  // resolved statically, and a checker that guessed at those would report defects
+  // it invented. They are counted and said out loud instead.
+  const byKey = new Map();
+  let computed = 0;
+  for (const project of projects) {
+    for (const src of walk(project.dir, (f) => f.endsWith('.vb'))) {
+      const lines = fs.readFileSync(src, 'utf8').split(/\r?\n/);
+      lines.forEach((raw, idx) => {
+        // The literal is KEPT here, which is the whole point: the key is inside it.
+        // cleanLines strips literals to keep the block counter honest, and using it
+        // here found nothing at all -- zero keys asked for, 135 "computed" ones, and
+        // a green line. A comment is stripped, because a key in a comment is prose.
+        const line = raw.replace(/'.*$/, '');
+        for (const m of line.matchAll(/Localizer\.(?:Get|Format)\("([^"]+)"/g)) {
+          if (!byKey.has(m[1])) byKey.set(m[1], { src, line: idx + 1 });
+        }
+        if (/Localizer\.(?:Get|Format)\((?!\s*")/.test(line)) computed += 1;
+      });
+    }
+  }
+
+  let anyBad = false;
+  for (const [key, site] of byKey) {
+    if (catalogue.has(key)) continue;
+    fail('localizer', site.src,
+      `Localizer asks for "${key}", which no .resw declares. A missing key does not `
+      + 'throw: the screen shows the key\'s own name, which is how this went unnoticed '
+      + 'until somebody read the page on a phone.', site.line);
+    anyBad = true;
+  }
+  if (!anyBad) {
+    ok(`every literal key the code asks for is in the catalogue `
+      + `(${byKey.size} asked for, ${catalogue.size} declared, ${computed} call site(s) `
+      + 'pass a computed key and are not checkable here)');
+  }
+}
+
+// VB is case-insensitive AND a local declaration wins for the WHOLE method, not
+// from the line it appears on. So `Dim body As String` in a method that also calls
+// Body(...) above it does not make the call ambiguous: it turns every one of those
+// calls into a reference to a variable declared later -- BC32000, plus a BC30057
+// about Chars on each of them. This project has paid for that twice now, once as a
+// `Dim loader` hiding a loader property and once as a `Dim body` hiding Body in the
+// token page, and both were found by the guest build after this file had gone green.
+// This is the cheap half of the defence; the compiler is still the other half.
+function checkLocalShadowing() {
+  heading('Locals that shadow a member of their own class');
+
+  const MEMBER = /^\s*(?:(?:Public|Private|Protected|Friend)\s+)?(?:Shared\s+)?(?:Default\s+)?(?:ReadOnly\s+|WriteOnly\s+)?(?:Overridable\s+|Overrides\s+|MustOverride\s+|NotOverridable\s+|Async\s+)*(?:Sub|Function|Property|Event)\s+(\w+)/;
+  const LOCAL = /^\s*(?:Dim|Const)\s+(\w+)|^\s*For\s+(\w+)\s+As\b|^\s*Using\s+(\w+)\s+As\b/;
+
+  let anyBad = false;
+  for (const project of projects) {
+    for (const src of walk(project.dir, (f) => f.endsWith('.vb'))) {
+      const lines = cleanLines(fs.readFileSync(src, 'utf8'));
+      // A stack rather than one set: this repository keeps small classes in the same
+      // file as the class that uses them (TokenVerdict beside TokenInbox), and the
+      // members of one are not the members of the other.
+      const classes = [];
+      lines.forEach((line, idx) => {
+        if (/^\s*(?:(?:Public|Private|Protected|Friend)\s+)?(?:Partial\s+)?(?:NotInheritable\s+)?Class\s+\w/.test(line)) {
+          classes.push(new Set());
+          return;
+        }
+        if (/^\s*End Class\b/.test(line)) {
+          classes.pop();
+          return;
+        }
+        const current = classes[classes.length - 1];
+        if (!current) return;
+
+        const member = line.match(MEMBER);
+        if (member) current.add(member[1].toLowerCase());
+
+        const local = line.match(LOCAL);
+        if (!local) return;
+        const name = (local[1] || local[2] || local[3] || '').toLowerCase();
+        if (!name || !current.has(name)) return;
+        fail('shadowing', src,
+          `\`${line.trim()}\` declares a local named "${name}", which is also a member of `
+          + 'this class. VB is case-insensitive and the local wins for the whole method, so '
+          + 'every other mention in that method means this variable -- including the ones '
+          + 'written ABOVE this line, which is how it fails: BC32000, then a BC30057 about '
+          + 'Chars for each. Rename the local.',
+          idx + 1);
+        anyBad = true;
+      });
+    }
+  }
+  if (!anyBad) {
+    ok('no local hides a member of its own class (a VB local wins for the whole method)');
+  }
+}
+
 function checkReservedNames() {
   heading('reserved words used as names');
   let anyBad = false;
@@ -1617,6 +1775,8 @@ const GROUPS = [
   checkCommentHazards,
   checkPrivilegedAccess,
   checkCapabilityRequirements,
+  checkLocalizerKeys,
+  checkLocalShadowing,
   checkReservedNames,
 ];
 
@@ -1631,7 +1791,10 @@ if (findings.length > 0) {
   }
   process.exit(1);
 }
-console.log('\nNo mechanical defects found in the seventeen checked categories.');
+// The count comes from the list, not from a word: the sentence above read
+// "seventeen" while the list held sixteen, which is the same drift the number in
+// the run line was fixed for.
+console.log(`\nNo mechanical defects found in the ${GROUPS.length} checked categories.`);
 console.log('This still does NOT mean the project compiles. Build it for real:');
 console.log('');
 console.log('  prlctl exec "{66a2f493-162c-4b3f-ba40-0a26020cc818}" "cmd.exe" "/c" \\');

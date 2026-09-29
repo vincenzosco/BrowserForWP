@@ -398,11 +398,14 @@ Namespace Http
             Dim colon = authority.IndexOf(":"c)
             If colon >= 0 Then
                 result.Host = authority.Substring(0, colon)
-                Dim port As Integer
-                If Not Integer.TryParse(authority.Substring(colon + 1), port) Then
+                ' Named `portNumber` and not `port`: this class has a Port property,
+                ' and a local called port hides it for the whole method -- which is
+                ' how a check on a member turns into a variable declared later.
+                Dim portNumber As Integer
+                If Not Integer.TryParse(authority.Substring(colon + 1), portNumber) Then
                     Throw New HttpProtocolException("malformed port in " & url)
                 End If
-                result.Port = port
+                result.Port = portNumber
             Else
                 result.Host = authority
                 result.Port = 443

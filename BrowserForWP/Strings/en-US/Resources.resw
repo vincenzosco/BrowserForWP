@@ -391,4 +391,95 @@
   <data name="KeyBarClose" xml:space="preserve">
     <value>Close</value>
   </data>
+  <!-- The page this phone serves so a token can be pasted from a computer -->
+  <data name="TokenInboxTitle" xml:space="preserve">
+    <value>Paste the token from another device</value>
+  </data>
+  <data name="TokenInboxNote" xml:space="preserve">
+    <value>This opens a page on this phone, reachable from a computer on the same Wi-Fi, for a minute: as long as this screen stays open. Open the address below in the computer's browser, paste the token there, and type the code you can read here. The token travels in the clear inside the local network: that is your own network rather than the Internet, and this phone has no certificate for a name nothing resolves. After it is saved there is nothing else to do: the address and the token go into the server you chose and the engine switches to Server. Nothing can be deleted from that page: to have a token removed, open an issue on the project's page.</value>
+  </data>
+  <data name="TokenInboxStart" xml:space="preserve">
+    <value>Open the page</value>
+  </data>
+  <data name="TokenInboxStop" xml:space="preserve">
+    <value>Close the page</value>
+  </data>
+  <data name="TokenInboxUrlLabel" xml:space="preserve">
+    <value>Address to open on the computer</value>
+  </data>
+  <data name="TokenInboxCodeLabel" xml:space="preserve">
+    <value>Code to type there</value>
+  </data>
+  <data name="TokenInboxNotRunning" xml:space="preserve">
+    <value>The page is not open.</value>
+  </data>
+  <data name="TokenInboxRunning" xml:space="preserve">
+    <value>The page is open: fill the form in from the computer. It closes itself after five wrong codes.</value>
+  </data>
+  <data name="TokenInboxStopped" xml:space="preserve">
+    <value>Page closed.</value>
+  </data>
+  <data name="TokenInboxStoppedFailures" xml:space="preserve">
+    <value>Five wrong codes: the page closed itself. Open it again to try once more.</value>
+  </data>
+  <data name="TokenInboxNoAddress" xml:space="preserve">
+    <value>This phone has no reachable network address: connect the Wi-Fi and try again.</value>
+  </data>
+  <data name="TokenInboxNoPort" xml:space="preserve">
+    <value>No free port for the page: close whatever is holding it and try again.</value>
+  </data>
+  <data name="TokenInboxSaved" xml:space="preserve">
+    <value>Saved: this phone now draws its pages on the server.</value>
+  </data>
+  <data name="TokenInboxReasonCode" xml:space="preserve">
+    <value>That is not the code on the phone's screen. Read it again.</value>
+  </data>
+  <data name="TokenInboxReasonToken" xml:space="preserve">
+    <value>That does not look like a token: paste the whole string the server showed you.</value>
+  </data>
+  <data name="TokenInboxReasonSlot" xml:space="preserve">
+    <value>Unknown server: pick the first one or the backup.</value>
+  </data>
+  <data name="TokenInboxReasonAddress" xml:space="preserve">
+    <value>That server address cannot be used, and a token with no address leads nowhere: write it as https://server.example.com.</value>
+  </data>
+  <data name="TokenPageTitle" xml:space="preserve">
+    <value>Device token</value>
+  </data>
+  <data name="TokenPageIntro" xml:space="preserve">
+    <value>Paste the token the server showed you, say which server it belongs to, and retype the code you can read on the phone's screen. The token will not be shown again, here or on the phone.</value>
+  </data>
+  <data name="TokenPageTokenLabel" xml:space="preserve">
+    <value>Token</value>
+  </data>
+  <data name="TokenPageSlotLabel" xml:space="preserve">
+    <value>Which server it belongs to</value>
+  </data>
+  <data name="TokenPageSlotPrimary" xml:space="preserve">
+    <value>Server 1 (primary)</value>
+  </data>
+  <data name="TokenPageSlotSecondary" xml:space="preserve">
+    <value>Server 2 (backup, optional)</value>
+  </data>
+  <data name="TokenPageAddressLabel" xml:space="preserve">
+    <value>Server address</value>
+  </data>
+  <data name="TokenPageCodeLabel" xml:space="preserve">
+    <value>Code shown on the phone</value>
+  </data>
+  <data name="TokenPageSubmit" xml:space="preserve">
+    <value>Save on the phone</value>
+  </data>
+  <data name="TokenPageSaved" xml:space="preserve">
+    <value>Saved. This phone now draws its pages on that server.</value>
+  </data>
+  <data name="TokenPageRefused" xml:space="preserve">
+    <value>Not saved.</value>
+  </data>
+  <data name="TokenPageBadRequest" xml:space="preserve">
+    <value>This page only answers the form: open it at the address the phone shows.</value>
+  </data>
+  <data name="TokenPageNotFound" xml:space="preserve">
+    <value>Nothing here: the page is at the root of the address.</value>
+  </data>
 </root>

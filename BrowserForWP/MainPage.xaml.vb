@@ -48,6 +48,15 @@ Public NotInheritable Class MainPage
     Private ReadOnly _audio As New MediaElement()
     Private _audioHosted As Boolean
 
+    ' The page this phone serves while somebody is looking at Settings, so a token
+    ' can be pasted from a computer instead of typed here. Nothing is listening
+    ' until the button is pressed; see StopTokenInbox for the three ways it ends.
+    Private _tokenPage As BrowserForWP.Engine.TokenPage
+
+    ' A verdict from the token page, waiting for the UI thread. It is a field rather
+    ' than a closure because the shell has no lambdas: see TokenPage_Saved.
+    Private _pendingVerdict As TokenVerdict
+
     ''' <summary>True while pickers/lists are repopulated, so programmatic selection is ignored.</summary>
     Private _populatingLanguage As Boolean = False
     Private _refreshingTabs As Boolean = False
@@ -237,6 +246,7 @@ Public NotInheritable Class MainPage
         RemoteBackupBox.Text = _appSettings.RemoteSecondaryUrl
         RemoteBackupTokenBox.Text = _appSettings.RemoteSecondaryToken
         RemoteEnabledToggle.IsChecked = _appSettings.RemoteEnabled
+        RefreshTokenInboxUi()
 
         Dim capabilities = _engine.Capabilities
         ' The layer state used to be hardcoded English ("compatibility layer
@@ -968,6 +978,7 @@ Public NotInheritable Class MainPage
         RefreshTabsList()
         RefreshHistoryList()
         RefreshFavoritesList()
+        RefreshTokenInboxUi()
         SettingsOverlay.Visibility = Visibility.Visible
     End Sub
 
@@ -982,9 +993,152 @@ Public NotInheritable Class MainPage
     End Sub
 
     Private Sub CloseSettingsButton_Click(sender As Object, e As RoutedEventArgs)
+        ' The listener goes first, and it goes whatever else happens here: an open
+        ' port left behind a closed screen is the one state this feature must never
+        ' have, because nothing on the phone would be showing how to use it.
+        StopTokenInbox()
         SavePersistedState()
         ApplyLocalizedStrings()
         SettingsOverlay.Visibility = Visibility.Collapsed
+    End Sub
+
+    ''' <summary>
+    ''' The token page: start it, show its address and its code, and stop it.
+    '''
+    ''' The three ways it ends are all here or reach here -- this button, the
+    ''' settings screen closing, and five wrong codes -- because a listener whose
+    ''' off-switch lives in more than one place is a listener that can be left on.
+    ''' </summary>
+    Private Async Sub TokenInboxToggleButton_Click(sender As Object, e As RoutedEventArgs)
+        TokenInboxToggleButton.IsEnabled = False
+        Try
+            If _tokenPage IsNot Nothing AndAlso _tokenPage.IsRunning Then
+                StopTokenInbox()
+                TokenInboxStatus.Text = Localizer.Get("TokenInboxStopped")
+            Else
+                If _tokenPage Is Nothing Then
+                    _tokenPage = New BrowserForWP.Engine.TokenPage()
+                    AddHandler _tokenPage.Saved, AddressOf TokenPage_Saved
+                    AddHandler _tokenPage.Stopped, AddressOf TokenPage_Stopped
+                End If
+                Dim statusKey As String = Await _tokenPage.StartAsync(_appSettings.RemotePrimaryUrl,
+                                                                    _appSettings.RemoteSecondaryUrl)
+                TokenInboxStatus.Text = Localizer.Get(statusKey)
+            End If
+            RefreshTokenInboxUi()
+        Finally
+            TokenInboxToggleButton.IsEnabled = True
+        End Try
+    End Sub
+
+    ''' <summary>Closes the listener and updates the screen to say so.</summary>
+    Private Sub StopTokenInbox()
+        If _tokenPage Is Nothing Then Return
+        _tokenPage.Close()
+        If TokenInboxUrlText IsNot Nothing Then RefreshTokenInboxUi()
+    End Sub
+
+    ''' <summary>
+    ''' What the screen shows: the button's own word, the address to type, and the
+    ''' code. The address is the one that BOUND -- the port is not the one asked for
+    ''' when another app already had it -- and it is read from the page rather than
+    ''' remembered here.
+    ''' </summary>
+    Private Sub RefreshTokenInboxUi()
+        If TokenInboxTitle Is Nothing Then Return
+        TokenInboxTitle.Text = Localizer.Get("TokenInboxTitle")
+        TokenInboxNote.Text = Localizer.Get("TokenInboxNote")
+        TokenInboxUrlLabel.Text = Localizer.Get("TokenInboxUrlLabel")
+        TokenInboxCodeLabel.Text = Localizer.Get("TokenInboxCodeLabel")
+
+        Dim running As Boolean = _tokenPage IsNot Nothing AndAlso _tokenPage.IsRunning
+        TokenInboxToggleButton.Content = Localizer.Get(If(running, "TokenInboxStop", "TokenInboxStart"))
+        If running Then
+            TokenInboxUrlText.Text = _tokenPage.Address
+            TokenInboxCodeText.Text = _tokenPage.Code
+        Else
+            TokenInboxUrlText.Text = Localizer.Get("TokenInboxNotRunning")
+            TokenInboxCodeText.Text = String.Empty
+        End If
+    End Sub
+
+    ''' <summary>
+    ''' A submission was accepted. It arrives on a socket thread, so the verdict is
+    ''' parked in a field and the UI thread is asked to apply it: a lambda would read
+    ''' better and would also be the one thing in this file that no static check here
+    ''' can follow, because the block counter reads a bare `Sub()` line as neither an
+    ''' opener nor a closer.
+    ''' </summary>
+    Private Sub TokenPage_Saved(sender As Object, verdict As TokenVerdict)
+        _pendingVerdict = verdict
+        ' RunAsync, not BeginInvoke: the WinRT CoreDispatcher has RunAsync, and
+        ' BeginInvoke is WPF's Dispatcher -- BC30456, "BeginInvoke is not a member of
+        ' CoreDispatcher", found by the guest build. tools/check-vb.mjs knows the name
+        ' now, so the next file that reaches for it is told before the build.
+        Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal,
+                            New Windows.UI.Core.DispatchedHandler(AddressOf ApplyPendingVerdict))
+    End Sub
+
+    ''' <summary>The listener closed itself, and the reason is the code count.</summary>
+    Private Sub TokenPage_Stopped(sender As Object, e As EventArgs)
+        Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal,
+                            New Windows.UI.Core.DispatchedHandler(AddressOf ReportTokenInboxStopped))
+    End Sub
+
+    ''' <summary>Runs on the UI thread. See TokenPage_Saved.</summary>
+    Private Sub ApplyPendingVerdict()
+        Dim verdict As TokenVerdict = _pendingVerdict
+        _pendingVerdict = Nothing
+        ApplyTokenVerdict(verdict)
+    End Sub
+
+    ''' <summary>Runs on the UI thread. See TokenPage_Stopped.</summary>
+    Private Sub ReportTokenInboxStopped()
+        TokenInboxStatus.Text = Localizer.Get("TokenInboxStoppedFailures")
+        RefreshTokenInboxUi()
+    End Sub
+
+    ''' <summary>
+    ''' Store what the page accepted: the token and the address into the slot the form
+    ''' named, the switch on, and the engine on Server -- which is what "after the
+    ''' paste there is nothing left to do" means, and the whole point of the feature.
+    ''' </summary>
+    Private Sub ApplyTokenVerdict(verdict As TokenVerdict)
+        If verdict Is Nothing OrElse Not verdict.Ok Then Return
+
+        If verdict.Slot = RemoteServers.Secondary Then
+            _appSettings.RemoteSecondaryUrl = verdict.Address
+            _appSettings.RemoteSecondaryToken = verdict.Token
+        Else
+            _appSettings.RemotePrimaryUrl = verdict.Address
+            _appSettings.RemotePrimaryToken = verdict.Token
+        End If
+        _appSettings.RemoteEnabled = True
+        _appSettings.EngineSetting = EngineChoice.Remote
+        SavePersistedState()
+
+        ' The screen shows what was just saved, in the same fields a person would
+        ' have typed it into.
+        RemoteServerBox.Text = _appSettings.RemotePrimaryUrl
+        RemoteTokenBox.Text = _appSettings.RemotePrimaryToken
+        RemoteBackupBox.Text = _appSettings.RemoteSecondaryUrl
+        RemoteBackupTokenBox.Text = _appSettings.RemoteSecondaryToken
+        RemoteEnabledToggle.IsChecked = True
+
+        TokenInboxStatus.Text = Localizer.Get("TokenInboxSaved") & " " & TokenInbox.Masked(verdict.Token)
+
+        ' Through the picker and not around it: its own handler saves the setting,
+        ' applies the engine and navigates, so doing it here as well would be two
+        ' copies of that work and a screen that can disagree with the engine.
+        Dim index As Integer = EngineIndexOf(EngineChoice.Remote)
+        If EnginePicker.SelectedIndex <> index Then
+            EnginePicker.SelectedIndex = index
+        Else
+            ApplyEngineChoice()
+            Dim tabUrl As String = _session.ActiveTab.Url
+            If String.IsNullOrEmpty(tabUrl) Then tabUrl = _appSettings.Homepage
+            _engine.Navigate(tabUrl)
+        End If
     End Sub
 
     Private Async Sub CompatProbeButton_Click(sender As Object, e As RoutedEventArgs)

@@ -137,6 +137,33 @@ configurato…"* quando indirizzo, token e interruttore concordano, oppure *"Il
 server ospitato non è pronto: servono l'indirizzo e il token di questo
 dispositivo"* finché non lo fanno.
 
+### 3b. Oppure incolla il token da un computer
+
+Digitare un token di 43 caratteri su una tastiera virtuale del 2014 è il passo che
+questa pagina esiste per togliere. In **Impostazioni → Incolla il token da un altro
+dispositivo**, premi **Avvia la pagina**: il telefono mette in ascolto un piccolo
+server HTTP tutto suo e mostra l'**indirizzo da aprire sul computer**
+(`http://192.168.…:8777`) e un **codice di quattro cifre**. Digita quell'indirizzo
+nel browser di un computer sulla stessa rete Wi-Fi, incolla lì il token, indica se
+appartiene al **Server 1 (principale)** o al **Server 2 (riserva, facoltativo)**,
+riscrivi il codice e invia. Il telefono riempie allora l'**indirizzo e il token** di
+quel server, attiva *Disegna le pagine sul server* e passa il motore a **Server
+(Chromium remoto)**: sul telefono non resta più nulla da fare. La risposta maschera
+il token alle sue ultime quattro cifre invece di rimandarlo indietro.
+
+Due limiti sono dichiarati, non sottintesi:
+
+- **La pagina vive solo finché la schermata delle Impostazioni resta aperta.**
+  Chiudere le Impostazioni o premere **Chiudi la pagina** ferma l'ascolto, e lo
+  stesso fa il **quinto codice sbagliato**.
+- **È HTTP semplice sulla tua rete.** Il token attraversa il Wi-Fi locale in
+  chiaro, ed è per questo che la pagina non è raggiungibile da Internet e che il
+  codice esiste. Se non ti fidi della rete su cui sei, digita il token a mano.
+
+La pagina non può cancellare né cambiare nulla — riempie solo dei campi. **Per far
+rimuovere un token, apri una segnalazione** sulla pagina del progetto, citando l'id
+dispositivo che il server ha stampato.
+
 ### 4. Cosa aspettarsi, anche quando non funziona
 
 - **Sul dispositivo non viene disegnato nulla finché è scelto il motore server.**

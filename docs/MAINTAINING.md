@@ -2137,6 +2137,69 @@ below, and that table is still blank -- `MayFallBackToDevice` is exercised
 off-device, but the empty page, the error strip and the localized sentence have
 never been seen on a handset.
 
+### Round 20 -- a page the phone serves, so a token is pasted instead of typed
+
+**The request:** the app hosts a small HTML page so a device token can be pasted
+more easily -- the app shows a Wi-Fi address, you go there, put the token in a box
+and say whether it is server 1 or the backup -- and after the paste there is
+nothing left to do. Plus, on the server: a token is removed by opening an issue.
+
+**What was built.** `BrowserForWP.Core/Engine/Remote/TokenInbox.vb` holds the
+rules: decoding an urlencoded body, choosing which of the phone's own addresses a
+computer can reach, what a token looks like, which slot a word names, and `Review`,
+which decides whether a submission may be saved. `BrowserForWP/Engine/TokenPage.vb`
+holds the listener, the small amount of HTTP a browser actually sends, and the HTML.
+Every sentence comes from the catalogue, and every decision from Core -- the same
+split as `RemoteServers`, for the same reason: the parts worth testing are the parts
+that do not need a phone.
+
+**Five decisions, each with a cost that is documented rather than implied.** The
+listener runs ONLY while the Settings screen is open (button, screen closing, or
+five wrong codes). A four-digit code, shown on that screen, is required by the form.
+Port 8777 is asked for and the first free port after it is taken, so the address
+shown is the one that bound. The token is never echoed back -- the reply masks it to
+four characters. And the page is plain HTTP inside the local network, which the
+README says out loud: the token travels in the clear on your own Wi-Fi, to a phone
+that has no certificate for a name nothing resolves.
+
+**Three things the GUEST BUILD found that no checker did**, in the order they
+appeared: a `ReadOnly Property` with no `Get` (auto-implemented one-sided properties
+are VB 14; this project is VB 12, and the error is BC30126 followed by a BC30634 in
+every following line); a `Dim body As String` that shadowed this class's own `Body`
+method for the whole method -- VB is case-insensitive and a local wins for the entire
+method, including the calls written ABOVE it; and `Dispatcher.BeginInvoke`, which is
+WPF's Dispatcher, while the WinRT `CoreDispatcher` has `RunAsync`.
+
+The second and third are now checks rather than lessons: `check-vb.mjs` gained **a
+group for locals that shadow a member of their own class** and an entry in
+`PROFILE_HAZARDS` for `BeginInvoke`. The new group immediately found the same pattern
+in two files that predate this round -- `X25519.vb` had `Dim carry` inside the method
+`Carry`, and `HttpClient13.vb` had `Dim port` beside a `Port` property. Both compiled,
+because neither method referenced the name it was hiding; both are renamed.
+
+**And a group for the catalogue**, which this round needed twelve new keys for and
+had no way to check: every literal `Localizer.Get("...")` key must exist in the
+`.resw` pair. First run: **108 keys asked for, all present, 10 call sites computed
+and reported as uncheckable**. Its own first draft used the checker's `cleanLines`
+helper, which strips string literals, and reported "0 asked for" as a green line --
+written down here because a check that cannot see its own subject is the failure mode
+this repository keeps meeting.
+
+**On the server, the other half of the request.** `BFWP_ISSUES_URL` (default: this
+repository's issues) is now printed wherever a token is mentioned -- under the form,
+under the refusal a lost token walks into, and next to the device id that has to be
+quoted in the request. The operator's own half (`bfwp-device release <id>`) sits on
+the same page, for whoever has a shell.
+
+**Verified:** `token-inbox.mjs` **86/86** (71 rules + 15 shell contracts), every
+other referee green, `check-vb.mjs` **18 groups / 0 finding(s)**, four solution
+configurations `BUILD_EXIT=0`, server `npm test` **204 pass / 0 fail**, and the live
+page on docker1 carries the removal link (checked with `curl` from outside).
+**Not verified:** everything that needs the handset -- the listener binding, the
+address and the code as they appear on the screen, the form in a computer's browser,
+and the engine switching to *Server* after a paste. That is row 11 of the table
+below, and it is blank like the rest.
+
 ## The loop
 
 Every change follows five steps, in order. The canonical version lives in
@@ -2170,10 +2233,11 @@ What is and is not covered:
 | `tools/proto/core-logic.mjs` | A transliteration of `CoreLogicTests.vb`. 72 assertions, exit 1 on failure. | `node`, on any machine. **This is what actually runs those assertions.** |
 | `tools/proto/remote-input.mjs` | The remote input path as source contracts: one hidden `TextBox` built once, the `SemaphoreSlim` gate over every write to the stream, the rotation that moves both viewports and sends `RESIZE`, the eight key names the keys bar offers, that every label has a key in both `.resw` files, and — since Round 14 — that **a tap is not a request to type** and that the soft keyboard is raised only by the page's own answer, which the engine must route to the screen. Eleven checks, plus `--probe`, which plants each defect (twelve mutations) and requires its check to refuse it. | `node`, on any machine. |
 | `tools/proto/remote-protocol.mjs` | The render protocol's wire format: header, every encoder and decoder, the frame splitter, and the AEAD seal both ways, checked byte-for-byte against `protocol/vectors.json` — which the SERVER's own code produced. The only statement of the protocol that neither implementation wrote. 100 checks, including both values of `FOCUS` and its refusal of a third. | `node`, on any machine. |
-| `BrowserForWP/Strings/**/Resources.resw`, and the map name in `BrowserForWP.Localization/Localizer.vb` | Two languages, one key set (61 keys), AND the name of the resource map the code asks WinRT for — the question parity was not asking, and one whose wrong answer runs silently. Round 18. | `node tools/check-vb.mjs`, group 6. The map-name inference is justified by a measurement of the built `resources.pri`, recorded in Round 18, because the PRI itself is a per-platform build output and is not committed. |
+| `BrowserForWP/Strings/**/Resources.resw`, and the map name in `BrowserForWP.Localization/Localizer.vb` | Two languages, one key set (**128 keys**, and every literal key the code asks for must be one of them -- the `Localizer keys` group, added in Round 20), AND the name of the resource map the code asks WinRT for — the question parity was not asking, and one whose wrong answer runs silently. Round 18. | `node tools/check-vb.mjs`, group 6. The map-name inference is justified by a measurement of the built `resources.pri`, recorded in Round 18, because the PRI itself is a per-platform build output and is not committed. |
 | `tools/proto/remote-servers.mjs` | `RemoteServers.vb`: url normalisation, the primary/secondary order, duplicate collapsing, and the source contract that Core holds resource keys and not prose. | `node`, on any machine. |
 | `tools/proto/engine-choice.mjs` | The `EngineChoice` decision table -- including that an explicit Server choice is never the device engine, and that `MayFallBackToDevice` is False for it -- plus the source contract around it: the constants by name, the readiness branch on the automatic path only, the shell's gate, and the reasons as resource keys rather than sentences. | `node`, on any machine. |
-| `tools/check-vb.mjs` | 17 categories / 16 check groups over every `.vb`, `.vbproj`, `.xaml` and `.resw`, including every `{ThemeResource}` key, every project's flavour GUID and the factory GUID and separators of every `BrowserForWP.sln` entry, (group 13) doc-comment structure, (group 15) every privileged API name and every manifest capability that would ask the platform for something it cannot grant, (group 16) every API whose capability the manifest fails to declare, and (group 17) every declaration that names a VB keyword. | `node`, on any machine. |
+| `tools/check-vb.mjs` | 18 categories / 18 check groups over every `.vb`, `.vbproj`, `.xaml` and `.resw`, including every `{ThemeResource}` key, every project's flavour GUID and the factory GUID and separators of every `BrowserForWP.sln` entry, doc-comment structure, every privileged API name and every manifest capability that would ask the platform for something it cannot grant, every API whose capability the manifest fails to declare, every declaration that names a VB keyword, and the two groups Round 20 added: every literal `Localizer.Get("...")` key exists in the `.resw` pair, and no local shadows a member of its own class (`Dim carry` inside `Carry` is the shape of that bug, and two files in the tree had one). | `node`, on any machine. |
+| `tools/proto/token-inbox.mjs` | `TokenInbox.vb` -- the rules behind the page the phone serves -- and the source contracts of the shell that serves it: form decoding including malformed escapes, which of the phone's own addresses is advertised, the token's shape, the slot names, every refusal of `Review` (code first, then token, then slot, then address), plus the shell's `no-store` and CSP headers, the five-failure stop, and that the token is written once and masked. 86 checks. | `node`, on any machine. |
 | `tools/keyword-probe/`, `tools/keyword-probe.cmd` | One `Dim <word> As Integer` per candidate, compiled by the real vbc, so group 17's list is measured rather than quoted. Batched, with a per-batch sentinel, because vbc 12 stops after about a hundred errors **with no message** and the first single-file version read that truncation as "legal". | `bash`, with the guest reachable. |
 | `tools/wp81-theme-keys.sh` | Regenerates `tools/wp81-theme-keys.txt`, the 523 theme-resource keys Windows Phone 8.1 defines, read from the guest's design dictionaries. | `bash`, with the guest reachable. |
 | `tools/vm-build.cmd` | The real compiler, and the arbiter of pass/fail. | The Windows guest. |
@@ -2225,6 +2289,7 @@ exactly one row will ever fill it: a real device.
 | Scroll | The scroll happens server-side; the frame follows. | |
 | Tap a text field | The server reports focus on a field that takes text, and the keyboard rises — a moment after the finger lifts, because the answer comes from the page. | |
 | Tap a link, a button, then empty space | The keyboard does **not** rise on any of the three, and it goes back down if it was up. | |
+| Open the token page from Settings, then open the address it shows in a computer's browser and submit the token with the four-digit code | The Settings screen shows a Wi-Fi address and a four-digit code; the page loads in the computer's browser and shows the form; a submit fills that server's **address and token**, turns the switch on and switches the engine to **Server (Chromium remotely)** -- the next page is drawn by the server, with nothing left to do. Closing Settings stops the listener, and so does the fifth wrong code. | |
 | Type in a form field | The keystrokes cross, the text appears in the frame. | |
 | Dismiss the keyboard by hand, then tap the same field again | The keyboard does **not** come back: the server reports on a change, and this is item 20, not a surprise. | |
 | Press the phone's back button | The shell's back goes to the previous page. | |

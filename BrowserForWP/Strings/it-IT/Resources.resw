@@ -391,4 +391,95 @@
   <data name="KeyBarClose" xml:space="preserve">
     <value>Chiudi</value>
   </data>
+  <!-- La pagina che il telefono serve perché il token si incolli da un computer -->
+  <data name="TokenInboxTitle" xml:space="preserve">
+    <value>Incolla il token da un altro dispositivo</value>
+  </data>
+  <data name="TokenInboxNote" xml:space="preserve">
+    <value>Apre una pagina su questo telefono, raggiungibile da un computer sulla stessa rete Wi-Fi, per un minuto: finché questa schermata resta aperta. Apri l'indirizzo qui sotto nel browser del computer, incolla lì il token e scrivi il codice che leggi qui. Il token viaggia in chiaro dentro la rete locale: è la rete di casa tua, non Internet, e sul telefono non c'è un certificato per un nome che nessuno risolve. Dopo il salvataggio non c'è altro da fare: l'indirizzo e il token finiscono nel server scelto e il motore passa a Server. Dalla pagina non si può cancellare nulla: per far rimuovere un token, apri una segnalazione sulla pagina del progetto.</value>
+  </data>
+  <data name="TokenInboxStart" xml:space="preserve">
+    <value>Avvia la pagina</value>
+  </data>
+  <data name="TokenInboxStop" xml:space="preserve">
+    <value>Chiudi la pagina</value>
+  </data>
+  <data name="TokenInboxUrlLabel" xml:space="preserve">
+    <value>Indirizzo da aprire sul computer</value>
+  </data>
+  <data name="TokenInboxCodeLabel" xml:space="preserve">
+    <value>Codice da scrivere lì</value>
+  </data>
+  <data name="TokenInboxNotRunning" xml:space="preserve">
+    <value>La pagina non è aperta.</value>
+  </data>
+  <data name="TokenInboxRunning" xml:space="preserve">
+    <value>La pagina è aperta: compila il modulo dal computer. Si chiude da sola se il codice viene sbagliato cinque volte.</value>
+  </data>
+  <data name="TokenInboxStopped" xml:space="preserve">
+    <value>Pagina chiusa.</value>
+  </data>
+  <data name="TokenInboxStoppedFailures" xml:space="preserve">
+    <value>Codice sbagliato cinque volte: la pagina si è chiusa. Riapri il modulo per riprovare.</value>
+  </data>
+  <data name="TokenInboxNoAddress" xml:space="preserve">
+    <value>Questo telefono non ha un indirizzo di rete raggiungibile: collega il Wi-Fi e riprova.</value>
+  </data>
+  <data name="TokenInboxNoPort" xml:space="preserve">
+    <value>Nessuna porta libera per la pagina: chiudi l'app che la occupa e riprova.</value>
+  </data>
+  <data name="TokenInboxSaved" xml:space="preserve">
+    <value>Salvato: il telefono ora disegna le pagine sul server.</value>
+  </data>
+  <data name="TokenInboxReasonCode" xml:space="preserve">
+    <value>Il codice non è quello scritto sul telefono. Rileggilo e riprova.</value>
+  </data>
+  <data name="TokenInboxReasonToken" xml:space="preserve">
+    <value>Questo non sembra un token: incolla la stringa che il server ha mostrato, tutta intera.</value>
+  </data>
+  <data name="TokenInboxReasonSlot" xml:space="preserve">
+    <value>Server non riconosciuto: scegli il primo o quello di riserva.</value>
+  </data>
+  <data name="TokenInboxReasonAddress" xml:space="preserve">
+    <value>L'indirizzo del server non è utilizzabile, e senza indirizzo il token non porta da nessuna parte: scrivilo come https://server.example.com.</value>
+  </data>
+  <data name="TokenPageTitle" xml:space="preserve">
+    <value>Token del dispositivo</value>
+  </data>
+  <data name="TokenPageIntro" xml:space="preserve">
+    <value>Incolla qui il token che il server ha mostrato, scegli a quale server appartiene e riscrivi il codice che leggi sullo schermo del telefono. Il token non verrà mostrato di nuovo, né qui né sul telefono.</value>
+  </data>
+  <data name="TokenPageTokenLabel" xml:space="preserve">
+    <value>Token</value>
+  </data>
+  <data name="TokenPageSlotLabel" xml:space="preserve">
+    <value>A quale server appartiene</value>
+  </data>
+  <data name="TokenPageSlotPrimary" xml:space="preserve">
+    <value>Server 1 (principale)</value>
+  </data>
+  <data name="TokenPageSlotSecondary" xml:space="preserve">
+    <value>Server 2 (riserva, facoltativo)</value>
+  </data>
+  <data name="TokenPageAddressLabel" xml:space="preserve">
+    <value>Indirizzo del server</value>
+  </data>
+  <data name="TokenPageCodeLabel" xml:space="preserve">
+    <value>Codice mostrato sul telefono</value>
+  </data>
+  <data name="TokenPageSubmit" xml:space="preserve">
+    <value>Salva sul telefono</value>
+  </data>
+  <data name="TokenPageSaved" xml:space="preserve">
+    <value>Salvato. Il telefono ora disegna le pagine su questo server.</value>
+  </data>
+  <data name="TokenPageRefused" xml:space="preserve">
+    <value>Non salvato.</value>
+  </data>
+  <data name="TokenPageBadRequest" xml:space="preserve">
+    <value>Questa pagina risponde solo al modulo: aprila con l'indirizzo che il telefono mostra.</value>
+  </data>
+  <data name="TokenPageNotFound" xml:space="preserve">
+    <value>Qui non c'è niente: la pagina è alla radice dell'indirizzo.</value>
+  </data>
 </root>

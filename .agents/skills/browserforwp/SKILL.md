@@ -56,7 +56,9 @@ the ".NET for Windows Store apps" profile, *not* desktop .NET. `SHA256`,
 `VerifySignature`, never `Verify`. Before introducing any `System.*` type, confirm
 it exists in that profile — do not assume a desktop API is available.
 `tools/check-vb.mjs` flags this family; the list is not exhaustive, so the flag is
-a floor, not a ceiling.
+a floor, not a ceiling. One it did not know until Round 20: **`Dispatcher.BeginInvoke`
+is WPF.** The WinRT `CoreDispatcher` answers `RunAsync(CoreDispatcherPriority.Normal,
+New DispatchedHandler(AddressOf …))`, and `BeginInvoke` is `BC30456`.
 
 **Second-and-a-half — the language is VB 12, not VB 14.** The toolchain is Visual
 Studio 2013. Implicit line continuation after a `.` arrived in **VB 14 (VS2015)**,
@@ -73,6 +75,14 @@ That is `BC30203` on the trailing dot, and then `U16`, `Bytes`, `Vec8` and
 `ToArray` all report "not declared" — 24 errors in one file, none of which names
 the real cause. Use a `With` block with one call per line; it reads the same and
 compiles. `tools/check-vb.mjs` catches this now, because it cost a whole round.
+
+**The same boundary runs the other way: a one-sided auto-implemented property is
+VB 14 too.** `Public ReadOnly Property Mask As String` with no `Get` block is the
+*read-only auto-property* of VS2015; on VS2013 it is `BC30126` on the property and
+then a `BC30634` in **every following line** of the file, none of them naming the
+property. Write the `Get` block. `tools/check-vb.mjs` group 11 refuses the shape
+now, with interfaces exempt — a one-sided declaration in an `Interface` is
+normal and legal.
 
 **Second-and-three-quarters — VB is case-insensitive, so a local can shadow a
 type or a member.** `Dim extensionType = ...` next to the `ExtensionType` enum
@@ -263,12 +273,14 @@ verified if you skipped its command.
 | Whether a PHONE would accept that certificate | Nothing here can answer it, and the answer is not "yes by default" | Round 17 closed the gate that was ours: the client now matches the SAN's `iPAddress` entries, and `tools/proto/tls13.mjs` proves the rule against the deployed certificate. The gate that is not ours is still shut: whether the handset was ever issued `ISRG Root X1`/`X2` is a property of the device, and a pin cannot stand in for it without deliberately relaxing `IsValid`. MAINTAINING items 21 and 12. Do not fill a row of "The remote engine, verified by hand" from an external `openssl` run |
 | Any claim about the remote engine's wire format, header, frame splitter or sealed frames | `node tools/proto/remote-protocol.mjs` | `100/100 checks passed`, byte-for-byte against the vectors the SERVER's own code emitted. **If you change the protocol, regenerate the server's `protocol/vectors.json` and replace the copy in `protocol/` in the same commit** |
 | The remote input path: the hidden keyboard field, what may raise it, the write gate, a rotation, the keys bar | `node tools/proto/remote-input.mjs --probe` | `11/11 remote-input checks passed` AND `Every planted defect was refused` (12 mutations). The `--probe` half is not optional: it plants each defect the checks exist for, and a mutation that does not fail its check means that check cannot see what it is named after |
+| The page this phone serves, so a device token is pasted from a computer instead of typed | `node tools/proto/token-inbox.mjs` | `86/86 token-inbox checks passed`. The rules of `TokenInbox.vb` (form decoding including malformed escapes, which of the phone's own addresses is advertised, the token's shape, the slot names, every refusal of `Review` -- code first, then token, then slot, then address) plus the source contracts of the shell: no HTML or prose in Core, `no-store` and the CSP header present, the token written once and masked, and the five-failure stop that closes the listener |
 | `CompatibilityProbe.vb` / any probe verdict | `node tools/proto/probe-verdict.mjs` | `9/9 checks passed` |
 | Any claim about re-configuring Trident | `node tools/proto/ie-adapt.mjs` | `9/9 checks passed` |
 | Any claim about leaving the AppContainer, or about getting JIT memory | `node tools/proto/sandbox-escape.mjs` | `15/15 checks passed` |
 | `BrowserForWP.Polyfill/compat.js` | `node tools/check-polyfill.mjs` | `is valid ES5` |
-| Any `.vb`, `.vbproj`, `.xaml` or `.resw` | `node tools/check-vb.mjs` | `0 finding(s)`, exit code 0 (16 groups over 17 categories) |
+| Any `.vb`, `.vbproj`, `.xaml` or `.resw` | `node tools/check-vb.mjs` | `0 finding(s)`, exit code 0 (18 groups over 18 categories) |
 | A declaration that names a VB keyword (`Dim next`, `Function Error`) | `node tools/check-vb.mjs` | `0 finding(s)`; group 17. Its word list is measured by `tools/keyword-probe.cmd`, not quoted from the language reference |
+| A literal `Localizer.Get("…")` key, or a local that shadows a member of its own class | `node tools/check-vb.mjs` | `0 finding(s)`. Two groups added in Round 20: every literal key the code asks for exists in the `.resw` pair (a mistyped key shows its own name on the screen), and no local hides a member of its own class — `Dim carry` inside the method `Carry` is the shape, and it found two files that predate the round. A local wins for the WHOLE method, including calls written above it |
 | Any `'''` doc comment, and any `Imports` of a BrowserForWP namespace | `node tools/check-vb.mjs` | `0 finding(s)`; group 13 balances doc-comment tags and refuses a plain `'` line stranded inside a `'''` block, and group 2 composes NESTED `Namespace` blocks. Both cost real warnings in Round 9 |
 | Adding or changing a word in group 17 | `tools\keyword-probe.cmd` in the guest | all three batches report `sentinel refused` and `controls clean`; the refused line numbers ARE the measurement. A batch whose sentinel is not refused is void, not clean |
 | A manifest capability, or any use of JIT / process creation / full trust | `node tools/check-vb.mjs` | `0 finding(s)`; group 15 refuses `Reflection.Emit`, `CreateProcess`, `Process.Start`, `LoadLibrary`, `VirtualAlloc`/`VirtualProtect` and the capabilities `runFullTrust`, `codeGeneration`, `allowElevation`, `packageManagement` |
@@ -373,7 +385,7 @@ tools/proto/*.mjs             ← runnable prototypes and logic mirrors
                                  shell-guards, ie-adapt, sandbox-escape,
                                  probe-verdict, fetch-rules, htmlparse,
                                  csscascade, boxtree, engine-choice,
-                                 remote-servers, remote-protocol)
+                                 remote-servers, remote-protocol, token-inbox)
 tools/make_logo.py            ← regenerates every image asset
 tools/proto/remote-servers.mjs← primary/secondary order, url normalisation (referee)
 tools/proto/engine-choice.mjs ← which engine renders, and which setting may fall back
@@ -387,9 +399,17 @@ BrowserForWP/Rendering/RemoteScreen.vb ← the Canvas of JPEG tiles, plus tap,
                                  scroll and soft-keyboard forwarding. NO handset
                                  has ever run one line of it (see the empty
                                  verification table in docs/MAINTAINING.md)
-tools/check-vb.mjs            ← 17 categories / 16 check groups of static
+BrowserForWP/Engine/TokenPage.vb ← the page the phone serves so a token is pasted
+                                 from a computer: a StreamSocketListener on the
+                                 first free port in 8777..8781, the small amount
+                                 of HTTP a browser actually sends, and the form.
+                                 Every sentence from Localizer, every decision
+                                 from BrowserForWP.Core/Engine/Remote/TokenInbox.vb
+tools/check-vb.mjs            ← 18 categories / 18 check groups of static
                                  VB/XAML/project/resw/theme-key/flavour/
-                                 import/name-legality/doc-comment checks
+                                 import/name-legality/doc-comment checks, plus
+                                 every literal Localizer key and every local that
+                                 shadows a member of its own class (Round 20)
 tools/keyword-probe/          ← one `Dim <word> As Integer` per candidate,
 tools/keyword-probe.cmd          compiled by the real vbc, so group 17's list is
                                  measured rather than quoted. Batched, with a

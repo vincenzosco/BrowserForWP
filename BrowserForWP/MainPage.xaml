@@ -215,6 +215,30 @@
                               Checked="RemoteEnabledToggle_Checked"
                               Unchecked="RemoteEnabledToggle_Unchecked"/>
 
+                    <!--
+                      The token this phone has to be given, typed on a keyboard that
+                      is not this phone's. The app serves a form on its own address
+                      for the minute somebody is looking at this screen: the computer
+                      pastes, and the phone stores. See Engine/TokenPage.vb for what
+                      the listener does and does not do, and TokenInbox in Core for
+                      the rules it applies to what arrives.
+
+                      The address and the code are shown as text rather than as a
+                      button that opens a browser on the phone itself: the browser
+                      this is for is the one on the other machine.
+                    -->
+                    <TextBlock x:Name="TokenInboxTitle" FontSize="18" Margin="0,16,0,4"/>
+                    <TextBlock x:Name="TokenInboxNote" TextWrapping="Wrap"
+                               FontSize="12" Opacity="0.8" Margin="0,0,0,4"/>
+                    <Button x:Name="TokenInboxToggleButton" Click="TokenInboxToggleButton_Click"/>
+                    <TextBlock x:Name="TokenInboxUrlLabel" Margin="0,8,0,4"/>
+                    <TextBlock x:Name="TokenInboxUrlText" TextWrapping="Wrap"
+                               FontFamily="Consolas" FontSize="14"/>
+                    <TextBlock x:Name="TokenInboxCodeLabel" Margin="0,8,0,4"/>
+                    <TextBlock x:Name="TokenInboxCodeText" FontSize="20" FontWeight="Bold"/>
+                    <TextBlock x:Name="TokenInboxStatus" TextWrapping="Wrap"
+                               FontSize="12" Opacity="0.8" Margin="0,4,0,0"/>
+
                     <TextBlock x:Name="TabsTitle" FontSize="18" Margin="0,16,0,4"/>
                     <ListBox x:Name="TabsList" Height="80" Width="280"
                              SelectionChanged="TabsList_SelectionChanged"/>

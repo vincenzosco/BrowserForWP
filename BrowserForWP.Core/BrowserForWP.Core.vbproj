@@ -121,6 +121,7 @@
     <Compile Include="Engine\Native\BoxTreeBuilder.vb" />
     <Compile Include="Engine\Remote\RemoteProtocol.vb" />
     <Compile Include="Engine\Remote\RemoteServers.vb" />
+    <Compile Include="Engine\Remote\TokenInbox.vb" />
     <Compile Include="Storage\AppSettings.vb" />
     <Compile Include="Storage\FavoritesStore.vb" />
     <Compile Include="Storage\HistoryStore.vb" />
