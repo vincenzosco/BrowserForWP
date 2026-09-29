@@ -45,6 +45,19 @@ Namespace Localization
         Private Shared _current As String
         Private Shared _loader As ResourceLoader
 
+        ''' <summary>
+        ''' Set when the resource map could not be loaded, so that the cost of a
+        ''' broken map is ONE exception instead of one per string.
+        '''
+        ''' Measured in the emulator on 2026-09-29: the wrong map name produced about
+        ''' fifty ResourceMap Not Found first-chance exceptions for a single launch,
+        ''' because constructing the loader was retried on every lookup and the
+        ''' failure was swallowed. A swallowed error that repeats once per label is
+        ''' not a diagnostic, it is a flood -- and it buried the one exception that
+        ''' mattered among fifty identical ones.
+        ''' </summary>
+        Private Shared _loaderUnavailable As Boolean
+
         Private Sub New()
         End Sub
 
@@ -95,13 +108,28 @@ Namespace Localization
         ''' </summary>
         Public Shared Function [Get](key As String) As String
             If String.IsNullOrEmpty(key) Then Return String.Empty
-            Try
-                Dim value = Loader.GetString(key)
-                If value IsNot Nothing Then Return value
-            Catch ex As Exception
-                ' A missing resource map or a malformed key must not take the UI
-                ' down; the key itself is a better diagnostic than a crash.
-            End Try
+
+            ' Nothing means the map could not be loaded, which has already been
+            ' reported once and is not worth reporting again per string.
+            '
+            ' The local is `resolver` and NOT `loader`: VB is case-insensitive, so
+            ' `Dim loader = Loader` declares a local that shadows the property it
+            ' is reading, and the compiler reports BC30980 ("cannot infer the type
+            ' of 'loader' from an expression containing 'loader'") followed by
+            ' BC30574 and BC30512, because with Option Strict On the name is then
+            ' late-bound Object. Measured on the first build of this change; the
+            ' same trap is why X509Reader.DerReader.Element.Value() has a differently
+            ' named local.
+            Dim resolver As ResourceLoader = Loader
+            If resolver IsNot Nothing Then
+                Try
+                    Dim value = resolver.GetString(key)
+                    If value IsNot Nothing Then Return value
+                Catch ex As Exception
+                    ' A malformed key must not take the UI down; the key itself is a
+                    ' better diagnostic than a crash.
+                End Try
+            End If
             Return key
         End Function
 
@@ -115,14 +143,32 @@ Namespace Localization
 
         ''' <summary>
         ''' Created lazily, and rebuilt whenever the language qualifier changes, so
-        ''' a runtime language switch is reflected without an app restart.
+        ''' a runtime language switch is reflected without an app restart. Nothing
+        ''' after a failure: the map either exists for the life of the process or it
+        ''' does not, and asking again per string only repeats the exception.
         ''' </summary>
         Private Shared ReadOnly Property Loader As ResourceLoader
             Get
-                If _loader Is Nothing Then _loader = New ResourceLoader(ResourceMap)
+                If _loader Is Nothing AndAlso Not _loaderUnavailable Then
+                    _loader = TryCreateLoader()
+                End If
                 Return _loader
             End Get
         End Property
+
+        ''' <summary>
+        ''' The only place a loader is constructed, and therefore the only place the
+        ''' "unavailable" flag is set. Nothing means the map is not there.
+        ''' </summary>
+        Private Shared Function TryCreateLoader() As ResourceLoader
+            Try
+                _loaderUnavailable = False
+                Return New ResourceLoader(ResourceMap)
+            Catch ex As Exception
+                _loaderUnavailable = True
+                Return Nothing
+            End Try
+        End Function
 
         ''' <summary>
         ''' Tell the resource system which language to resolve. Setting the
@@ -133,7 +179,7 @@ Namespace Localization
             Try
                 Dim context = ResourceContext.GetForCurrentView()
                 context.QualifierValues("Language") = tag
-                _loader = New ResourceLoader(ResourceMap)   ' discard the old resolution
+                _loader = TryCreateLoader()   ' discard the old resolution
             Catch ex As Exception
                 ' If the qualifier cannot be set we keep whatever the manifest
                 ' resolved, which is still a valid language rather than a failure.

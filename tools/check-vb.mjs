@@ -752,6 +752,26 @@ function checkResourceParity() {
   } else {
     ok(`the map the code asks for ("${mapConstant[1]}") is the map the .resw files become`);
   }
+
+  // The loader is created ONCE, and a failure is remembered.
+  //
+  // Shape, not behaviour: the VB cannot run off-device, so what this can assert
+  // is that the code still HAS the memory which stops a broken map from throwing
+  // once per string. What that memory is worth was measured in the emulator on
+  // 2026-09-29 -- the wrong map name produced about fifty exceptions for one
+  // launch, one per string, because constructing the loader was retried on every
+  // lookup. A check that cannot see the difference between "remembers" and
+  // "retries" is weaker than the defect it guards, and says so here rather than
+  // claiming to be a behaviour test.
+  if (!/_loaderUnavailable As Boolean/.test(localizer)) {
+    fail('resw', 'BrowserForWP.Localization/Localizer.vb',
+         'no _loaderUnavailable field: a failed resource-map load will be retried on every string');
+  } else if (!/If _loader Is Nothing AndAlso Not _loaderUnavailable Then/.test(localizer)) {
+    fail('resw', 'BrowserForWP.Localization/Localizer.vb',
+         'the Loader property does not consult _loaderUnavailable, so a failed load repeats per string');
+  } else {
+    ok('a failed resource-map load is remembered rather than retried per string');
+  }
 }
 
 // ── 7. XAML handler wiring ─────────────────────────────────────────────────
