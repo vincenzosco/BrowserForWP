@@ -912,8 +912,11 @@ the interface, so the shell wires whichever engine it built and therefore knows
     tap, `10/10` three times in a row, from another machine over an SSH tunnel and
     from inside the container. What that does NOT touch is any line of the VB:
     `RemoteScreen`, `RemoteEngine`, the soft-keyboard proxy, the 1/dpr scale and
-    the audio element have still never run on a handset, because the phone needs a
-    certificate from a real CA for a name it can validate and port 8443 opened. So
+    the audio element have still never run on a handset. At the time, the phone also
+    needed a certificate it would accept and port 8443 opened; Round 16 supplied
+    both -- the port, and a publicly trusted certificate for the address -- and did
+    **not** close this item, because a satisfied precondition is not a passed test.
+    The phone now stops at two gates of its own, named in item 21. So
     § "The remote engine, verified by hand" is still a table of blank rows, and the
     distinction is stated rather than implied: the protocol and the server have
     been verified end to end; the device has not.
@@ -966,6 +969,26 @@ the interface, so the shell wires whichever engine it built and therefore knows
     in the message either: it cannot be confirmed without a handset, and the
     decoders reject trailing bytes, so adding it later costs a protocol change in
     both repositories plus the vectors.
+21. **The client matches a NAME, and the deployed certificate is for an ADDRESS.**
+    `X509Reader` reads only the `dNSName` entries of `subjectAltName`
+    (`ExtractDnsNames`), and `CertificateValidator.MatchHostname` takes that list
+    and nothing else. A Let's Encrypt certificate for an IP carries the address in
+    an `iPAddress` entry and **no** common name at all, so the match fails with
+    "nothing to match against" -- on a chain that validates perfectly, and
+    refused rather than reported, because there is no separate sentence for it.
+    This is not an exotic gap: OpenSSL's own hostname check behaves the same way,
+    measured 2026-09-29 against this very server (`-verify_hostname` ->
+    `verify error:num=62:hostname mismatch` on a certificate that `openssl x509
+    -checkip` accepts), because name matching and address matching are two
+    different checks in every TLS client and only one of them usually gets
+    written. The second gate is the trust store, and it is not in our hands: the
+    chain ends at `ISRG Root X2` cross-signed by `ISRG Root X1`, and whether a
+    2014-era handset was ever issued either root cannot be measured from this
+    host. A pin cannot substitute for it -- item 12 -- because `IsValid` is the
+    chain AND the name, by design. So the phone can be pointed at a server that is
+    reachable, publicly trusted and verified with a real client, and still refuse
+    every byte; both gates are written down here rather than discovered on the
+    device.
 
 ### Error taxonomy
 
@@ -1781,6 +1804,82 @@ capture still needs a sound device.
 the six configurations and `devenv` unchanged, and the deployment itself: healthy,
 seven devices registered, `10/10` from two directions.
 
+### Round 16 — the deployment becomes reachable, and publicly trusted
+
+Round 15 ended with a short list and names on it: port 8443 was closed, and the
+certificate was self-signed for the bare IP, which the phone refuses by design. The
+owner's answers were "open it to the world", "no domain, use a Let's Encrypt
+certificate anyway", and "no connection limit", and this round is the three of them.
+
+**A certificate for an address is possible now.** Let's Encrypt opened IP
+certificates to the general public in January 2026, under the `shortlived` profile:
+160 hours, no common name, the address in the SAN as an `iPAddress` entry. Certbot
+has supported it since 5.3 (`--ip-address`) and 5.4 (webroot), so it comes from a
+venv on the host -- Ubuntu 24.04's archive predates both. What that buys is that
+`BFWP_PUBLIC_URL` can stay an address, and no name has to exist or resolve.
+
+**What a six-day certificate costs, and how it is paid.** A renewal timer is part
+of the installation, not an improvement to it, and the renewal has to reach the
+container: `Docker-BrowserForWP` gained `bin/bfwp-renew-hook.sh`, which copies the
+new pair into the one directory the container mounts, restarts the service and waits
+for the container's own health check before reporting success, plus
+`deploy/certbot-renew.{service,timer}` to run it twice a day.
+
+**Measured, from another machine, over the Internet, with no tunnel:** TLS 1.3 with
+`ecdsa_secp256r1_sha256`, `Verification: OK` against the public roots,
+`openssl x509 -checkip 34.132.106.149` -> `does match certificate`, and
+`bin/bfwp-smoke.js --verify` -> **`10/10`**, including the tap that reports an
+editable focus and the unchanged answer that stays quiet. That is the first time
+the deployment has been accepted by a client that checks the certificate at all --
+Round 15's runs had verification off, because the certificate could not pass it.
+The renewal loop was then executed for real rather than reasoned about:
+`certbot renew --force-renewal` on the host -> the hook copied the pair, restarted
+the service, waited for healthy, and the server began serving a new serial
+(`053F4D02...`, expiring `Oct 6 06:19:05 2026 GMT`).
+
+**Session limit:** the deployment asked for none, so `BFWP_MAX_SESSIONS` is 512, the
+server's own maximum. The honest number is still 231 MiB per live session on a 953 MB
+VM -- two or three devices -- and the server now logs `512 session(s) allowed` next
+to a host that cannot hold a fortieth of it. That is written down here rather than
+treated as a limit that was lifted.
+
+**Four defects, and only one of them was in the code.**
+
+- **`docker compose restart` does not re-read `.env`.** It restarts the container
+  that exists, with the environment it was created with, so the server went on
+  logging `2 session(s) allowed` after the file said 512. Only `up -d` recreates it.
+- **The staging trap is silent.** `certbot certonly --cert-name X` does nothing at
+  all when X exists and is not yet due: exit code 0, no new file, and the deployment
+  kept serving `(STAGING)` issuers after a command that looked like it had worked.
+  The hook now refuses a certificate whose SAN is not the address it serves, which
+  is the check that would have caught it.
+- **A hook's stderr is reported as "error output".** certbot printed *"Hook
+  'deploy-hook' ran with error output"* for a renewal that succeeded, because the
+  hook narrated its progress on stderr. Progress goes to stdout now; only failure
+  goes to stderr.
+- **The verification I wrote first was the wrong verification.** `openssl s_client
+  -verify_hostname 34.132.106.149` reports `hostname mismatch` on a certificate
+  whose SAN holds that address, because OpenSSL consults `dNSName` entries only.
+  The chain was fine; the check was not. Same gap as item 21, in a reference
+  client, found by trying to prove something instead of asserting it.
+
+**One thing was checked and turned out to need nothing.** The obvious worry was that
+the shipped default (`https://34.132.106.149`) would dial 443 while the server
+listens on 8443. It does not: `RemoteServers.Normalize` drops the port and
+`RemoteEngine.PortFor` puts `DefaultPort` (8443) back for a url that never carried
+one, which is stated in the `AppSettings` comment. So the shipped address and the
+deployed port already agreed, and neither end changed.
+
+**What this round does NOT verify:** anything about the handset, and it is now two
+specific gates rather than a general unknown -- item 21. § "The remote engine,
+verified by hand" stays blank, and the deployment being reachable does not fill a
+single row of it.
+
+**Verified:** on the host, `docker compose ps` healthy with `512 session(s)`
+logged and five to six devices registered; from outside, the four commands above;
+the renewal loop end to end; `certbot-renew.timer` enabled with its next run listed.
+**Not verified:** the phone (item 21), and the audio path, unchanged from Round 15.
+
 ## The loop
 
 Every change follows five steps, in order. The canonical version lives in
@@ -1846,11 +1945,15 @@ phone, no emulator and no Docker. The table below **is** the verification for th
 task, and it is **empty on purpose**. A row that was not run stays blank; filling
 one in from reading the code would make this table worth less than not having it.
 
-Ran it: 2026-09-29. Device: none available. Server: **up and answering** since that
-date -- `Docker-BrowserForWP` runs on `34.132.106.149`, `bin/bfwp-smoke.js` says
-`10/10` against it, and every row below is still blank, because the rows are about
-the PHONE. The server half of them is verified elsewhere: see item 15, and
-"A deployment that answers, and a device that has not spoken to it" below.
+Ran it: 2026-09-29. Device: none available. Server: **up, publicly trusted and
+answering** since that date -- `Docker-BrowserForWP` runs on `34.132.106.149` with
+a Let's Encrypt certificate for the bare address and port 8443 open (Round 16), and
+`bin/bfwp-smoke.js --verify` says `10/10` against it with certificate validation
+**on**. Every row below is still blank, because the rows are about the PHONE, and
+the phone has two gates of its own in front of them: item 21. The server half is
+verified elsewhere: see item 15, and "A deployment that answers, and a device that
+has not spoken to it" below. The blank table is the point of this section, and
+exactly one row will ever fill it: a real device.
 
 | Step | Expected | Result |
 | --- | --- | --- |
@@ -1884,6 +1987,8 @@ the PHONE. The server half of them is verified elsewhere: see item 15, and
 | No mechanical defect of the seventeen checked kinds | `node tools/check-vb.mjs` → `16 check groups run, 0 finding(s)` |
 | It compiles, for real, on the phone's toolchain | Six configurations, `BUILD_EXIT=0`: Debug/ARM, Debug/x86, Release/ARM, Release/x86 as solution builds, and Debug/Release as `Any CPU` app-project builds. Only the two deliberate `BC40000` warnings. |
 | The IDE's own project system still accepts the solution | `tools\vm-devenv.cmd` in the guest → `seven projects loaded and built`, `Rebuild All: 7 succeeded, 0 failed, 0 skipped`, `DEVENV_EXIT=0` |
+| The deployment is reachable from the Internet and accepted by a client that VALIDATES the certificate | From another machine, no tunnel: TLS 1.3 `ecdsa_secp256r1_sha256`, `Verification: OK`, `openssl x509 -checkip 34.132.106.149` → `does match certificate`, and `bin/bfwp-smoke.js --verify` → `10/10` (Round 16) |
+| The certificate renews itself with nobody watching | `certbot renew --force-renewal` on the host → the deploy hook staged the pair, restarted the service and waited for healthy; the server then served serial `053F4D02...`; `certbot-renew.timer` is `enabled`, next run listed (Round 16) |
 
 **Three defects this round found**, two by the compiler and one by reading the
 file being edited. All three had passed every checker in the repository.
