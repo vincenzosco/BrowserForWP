@@ -1,0 +1,424 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+
+  <!-- Application -->
+  <data name="AppName" xml:space="preserve">
+    <value>BrowserForWP</value>
+  </data>
+
+  <!-- Address bar -->
+  <data name="AddressPlaceholder" xml:space="preserve">
+    <value>Rechercher ou saisir une adresse</value>
+    <comment>Placeholder text shown in the address bar while empty.</comment>
+  </data>
+  <data name="Go" xml:space="preserve">
+    <value>Aller</value>
+  </data>
+
+  <!-- Navigation commands -->
+  <data name="Back" xml:space="preserve">
+    <value>Retour</value>
+  </data>
+  <data name="Forward" xml:space="preserve">
+    <value>Suivant</value>
+  </data>
+  <data name="Reload" xml:space="preserve">
+    <value>Recharger</value>
+  </data>
+  <data name="Stop" xml:space="preserve">
+    <value>Arrêter</value>
+  </data>
+  <data name="NewTab" xml:space="preserve">
+    <value>Nouvel onglet</value>
+  </data>
+  <data name="CloseTab" xml:space="preserve">
+    <value>Fermer l'onglet</value>
+  </data>
+  <data name="Settings" xml:space="preserve">
+    <value>Paramètres</value>
+  </data>
+
+  <!-- Security readout -->
+  <data name="SecuritySecure" xml:space="preserve">
+    <value>Connexion sécurisée</value>
+  </data>
+  <data name="SecurityInsecure" xml:space="preserve">
+    <value>Non sécurisé</value>
+  </data>
+  <data name="SecurityTls13" xml:space="preserve">
+    <value>Sécurisé — TLS 1.3</value>
+    <comment>Used when the app's own transport negotiated TLS 1.3.</comment>
+  </data>
+  <data name="SecurityWebViewCeiling" xml:space="preserve">
+    <value>(TLS 1.2 max, WebView).</value>
+    <comment>The honest ceiling for anything the hosted WebView loads: Schannel, not our TLS 1.3 stack.</comment>
+  </data>
+
+  <!-- Status -->
+  <data name="Loading" xml:space="preserve">
+    <value>Chargement…</value>
+  </data>
+  <data name="LoadComplete" xml:space="preserve">
+    <value>Terminé</value>
+  </data>
+
+  <!-- Language -->
+  <data name="LanguageLabel" xml:space="preserve">
+    <value>Langue</value>
+  </data>
+  <data name="LanguageAutomatic" xml:space="preserve">
+    <value>Automatique (langue du téléphone)</value>
+  </data>
+
+  <!-- Diagnostics -->
+  <data name="DiagnosticsTitle" xml:space="preserve">
+    <value>Diagnostics</value>
+  </data>
+  <data name="DiagnosticsCompatProbe" xml:space="preserve">
+    <value>Lancer le test de compatibilité</value>
+  </data>
+  <data name="DiagnosticsEngineLabel" xml:space="preserve">
+    <value>Moteur de rendu</value>
+  </data>
+  <data name="CompatLayerLabel" xml:space="preserve">
+    <value>Couche de compatibilité</value>
+  </data>
+  <data name="CompatLayerActive" xml:space="preserve">
+    <value>requise pour ce moteur</value>
+  </data>
+  <data name="CompatLayerNative" xml:space="preserve">
+    <value>non requise</value>
+  </data>
+  <data name="DiagnosticsNoMissingFeatures" xml:space="preserve">
+    <value>Aucune fonction web manquante détectée.</value>
+  </data>
+  <data name="ProbeNotRun" xml:space="preserve">
+    <value>Pas de réponse de la page : elle charge encore, ou ce moteur ne peut pas exécuter de scripts.</value>
+  </data>
+  <data name="ParseNoDocument" xml:space="preserve">
+    <value>Rien à analyser : l'onglet n'a pas d'adresse, ou la réponse n'était pas du HTML.</value>
+  </data>
+  <data name="IeModeCheck" xml:space="preserve">
+    <value>Vérifier le mode IE</value>
+  </data>
+  <data name="IeModeReport" xml:space="preserve">
+    <value>mode document : </value>
+  </data>
+  <data name="DiagnosticsClose" xml:space="preserve">
+    <value>Fermer</value>
+  </data>
+
+  <!-- Errors -->
+  <data name="ErrorUnknownScheme" xml:space="preserve">
+    <value>Cette adresse utilise un schéma non pris en charge.</value>
+  </data>
+  <data name="ErrorPageFailed" xml:space="preserve">
+    <value>Cette page n'a pas pu s'afficher.</value>
+  </data>
+  <data name="ErrorNoConnection" xml:space="preserve">
+    <value>Serveur injoignable.</value>
+  </data>
+  <data name="ErrorTlsHandshake" xml:space="preserve">
+    <value>La connexion sécurisée n'a pas pu être établie.</value>
+  </data>
+  <data name="ErrorNavigationFailed" xml:space="preserve">
+    <value>Échec de navigation. Vérifiez l'adresse et réessayez.</value>
+  </data>
+
+  <!-- Tabs -->
+  <data name="TabsTitle" xml:space="preserve">
+    <value>Onglets</value>
+  </data>
+
+  <!-- Desktop site -->
+  <data name="DesktopSite" xml:space="preserve">
+    <value>Version bureau</value>
+  </data>
+
+  <!-- History and favorites -->
+  <data name="HistoryTitle" xml:space="preserve">
+    <value>Historique</value>
+  </data>
+  <data name="FavoritesTitle" xml:space="preserve">
+    <value>Favoris</value>
+  </data>
+  <data name="AddFavorite" xml:space="preserve">
+    <value>Ajouter un favori</value>
+  </data>
+  <data name="RemoveFavorite" xml:space="preserve">
+    <value>Retirer le favori</value>
+  </data>
+  <data name="ClearHistory" xml:space="preserve">
+    <value>Effacer l'historique</value>
+  </data>
+
+  <!-- Security details -->
+  <data name="SecurityDetails" xml:space="preserve">
+    <value>Détails de sécurité</value>
+  </data>
+
+  <!-- TLS probe -->
+  <data name="TlsProbeHostLabel" xml:space="preserve">
+    <value>Hôte du test TLS</value>
+  </data>
+  <data name="TlsProbeRun" xml:space="preserve">
+    <value>Lancer le test TLS</value>
+  </data>
+
+  <!-- DoH -->
+  <data name="DohServerLabel" xml:space="preserve">
+    <value>Serveur DoH</value>
+  </data>
+
+  <!-- Pinning -->
+  <data name="PinTitle" xml:space="preserve">
+    <value>Épingles de certificat</value>
+  </data>
+  <data name="PinAdd" xml:space="preserve">
+    <value>Ajouter une épingle</value>
+  </data>
+  <data name="PinRemove" xml:space="preserve">
+    <value>Retirer l'épingle</value>
+  </data>
+  <data name="PinStored" xml:space="preserve">
+    <value>Épingle enregistrée.</value>
+  </data>
+  <data name="PinMismatch" xml:space="preserve">
+    <value>Non-concordance de l'épingle au prochain test.</value>
+  </data>
+
+  <!-- Homepage -->
+  <data name="HomepageLabel" xml:space="preserve">
+    <value>Page d'accueil</value>
+  </data>
+  <data name="EngineLabel" xml:space="preserve">
+    <value>Moteur de rendu</value>
+  </data>
+  <data name="EngineAuto" xml:space="preserve">
+    <value>Automatique</value>
+  </data>
+  <data name="EngineTrident" xml:space="preserve">
+    <value>System WebView (Trident)</value>
+  </data>
+  <data name="EngineRemote" xml:space="preserve">
+    <value>Serveur (Chromium à distance)</value>
+  </data>
+  <data name="EngineReasonSetting" xml:space="preserve">
+    <value>Choisi dans les paramètres.</value>
+  </data>
+  <data name="EngineReasonSettingRemote" xml:space="preserve">
+    <value>Choisi dans les paramètres : le serveur configuré dessine ces pages et peut lire tout ce que vous lisez.</value>
+  </data>
+  <data name="EngineReasonRemoteSecondary" xml:space="preserve">
+    <value>Le serveur principal n'a pas répondu, le secondaire est utilisé.</value>
+  </data>
+  <data name="EngineReasonRemoteNotConfigured" xml:space="preserve">
+    <value>Aucun serveur configuré. Ajoutez-en un dans les paramètres, sous Serveur.</value>
+  </data>
+  <data name="EngineReasonRemoteUnreachable" xml:space="preserve">
+    <value>Aucun serveur n'a répondu.</value>
+  </data>
+  <data name="EngineReasonAutoNoMeasurement" xml:space="preserve">
+    <value>Automatique : aucune page mesurée pour l'instant, le moteur système est utilisé.</value>
+  </data>
+  <data name="EngineReasonAutoFits" xml:space="preserve">
+    <value>Automatique : la page mesurée fonctionne toujours dans le moteur système.</value>
+  </data>
+  <data name="EngineReasonAutoTooManyMissingFeatures" xml:space="preserve">
+    <value>Automatique : la page mesurée exige trop de fonctions manquantes du moteur système.</value>
+  </data>
+
+  <!-- Lightweight modes -->
+  <data name="ReadingMode" xml:space="preserve">
+    <value>Mode lecture</value>
+  </data>
+  <data name="NightMode" xml:space="preserve">
+    <value>Mode nuit</value>
+  </data>
+  <data name="Find" xml:space="preserve">
+    <value>Rechercher</value>
+  </data>
+  <data name="Share" xml:space="preserve">
+    <value>Partager</value>
+  </data>
+  <data name="PrivateMode" xml:space="preserve">
+    <value>Mode privé</value>
+  </data>
+  <data name="BlockTrackers" xml:space="preserve">
+    <value>Bloquer les traqueurs</value>
+  </data>
+  <data name="RestoreSession" xml:space="preserve">
+    <value>Restaurer les onglets au démarrage</value>
+  </data>
+  <data name="Diagnostics" xml:space="preserve">
+    <value>Diagnostics</value>
+  </data>
+  <data name="FindNoMatch" xml:space="preserve">
+    <value>Introuvable</value>
+  </data>
+  <data name="BlockedTracker" xml:space="preserve">
+    <value>Traqueur bloqué</value>
+  </data>
+  <data name="ReaderFallback" xml:space="preserve">
+    <value>Affichage de l'article simplifié</value>
+  </data>
+  <data name="LiteRedirects" xml:space="preserve">
+    <value>Préférer les versions légères</value>
+  </data>
+
+  <!-- Offline pages -->
+  <data name="SavePage" xml:space="preserve">
+    <value>Enregistrer la page</value>
+  </data>
+  <data name="SavedPages" xml:space="preserve">
+    <value>Pages enregistrées</value>
+  </data>
+  <data name="SavedDelete" xml:space="preserve">
+    <value>Supprimer</value>
+  </data>
+
+  <!-- Per-site display -->
+  <data name="TextSize" xml:space="preserve">
+    <value>Taille du texte</value>
+  </data>
+  <data name="Images" xml:space="preserve">
+    <value>Images</value>
+  </data>
+
+  <!-- Speed dial -->
+  <data name="SpeedDial" xml:space="preserve">
+    <value>Accès rapide</value>
+  </data>
+  <data name="SpeedDialAdd" xml:space="preserve">
+    <value>Ajouter la page active</value>
+  </data>
+  <data name="SpeedDialRemove" xml:space="preserve">
+    <value>Retirer</value>
+  </data>
+
+  <!-- Backup and restore -->
+  <data name="Backup" xml:space="preserve">
+    <value>Sauvegarder</value>
+  </data>
+  <data name="Restore" xml:space="preserve">
+    <value>Restaurer</value>
+  </data>
+  <data name="BackupDone" xml:space="preserve">
+    <value>Terminé</value>
+  </data>
+
+  <!-- Error recovery -->
+  <data name="Retry" xml:space="preserve">
+    <value>Réessayer</value>
+  </data>
+
+  <!-- Remote server: where the pages are drawn, and what that costs -->
+  <data name="RemoteNotice" xml:space="preserve">
+    <value>Les pages sont dessinées par le serveur, donc son opérateur peut lire tout ce que vous lisez, mots de passe inclus. Laissez désactivé sauf si vous exploitez le serveur ou avez confiance en son opérateur.</value>
+  </data>
+  <data name="RemoteServerLabel" xml:space="preserve">
+    <value>Adresse du serveur</value>
+  </data>
+  <data name="RemoteTokenLabel" xml:space="preserve">
+    <value>Jeton de l'appareil</value>
+  </data>
+  <data name="RemoteBackupLabel" xml:space="preserve">
+    <value>Adresse du serveur de secours (facultatif)</value>
+  </data>
+  <data name="RemoteBackupTokenLabel" xml:space="preserve">
+    <value>Jeton de l'appareil de secours (facultatif)</value>
+  </data>
+  <data name="RemoteUseServer" xml:space="preserve">
+    <value>Dessiner les pages sur le serveur</value>
+  </data>
+
+  <!-- The keys bar: the keys a phone keyboard cannot send (see MainPage.xaml) -->
+  <data name="RemoteKeys" xml:space="preserve">
+    <value>Touches</value>
+  </data>
+  <data name="KeyTab" xml:space="preserve">
+    <value>Tab</value>
+  </data>
+  <data name="KeyEnter" xml:space="preserve">
+    <value>Entrée</value>
+  </data>
+  <data name="KeyEscape" xml:space="preserve">
+    <value>Esc</value>
+  </data>
+  <data name="KeyBackspace" xml:space="preserve">
+    <value>Retour arrière</value>
+  </data>
+  <data name="KeyLeft" xml:space="preserve">
+    <value>&#x2190;</value>
+  </data>
+  <data name="KeyUp" xml:space="preserve">
+    <value>&#x2191;</value>
+  </data>
+  <data name="KeyDown" xml:space="preserve">
+    <value>&#x2193;</value>
+  </data>
+  <data name="KeyRight" xml:space="preserve">
+    <value>&#x2192;</value>
+  </data>
+  <data name="KeyBarClose" xml:space="preserve">
+    <value>Fermer</value>
+  </data>
+</root>

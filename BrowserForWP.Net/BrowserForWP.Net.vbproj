@@ -47,14 +47,17 @@
     <AssemblyName>BrowserForWP.Net</AssemblyName>
     <DefaultLanguage>en-US</DefaultLanguage>
     <TargetPlatformVersion>8.1</TargetPlatformVersion>
-    <!-- Without this the project's target platform is unspecified, and a
-         Windows Phone 8.1 application cannot resolve it as a reference: the
-         build reports "The referenced component could not be found" and every
-         type it defines is then "not defined" in the referencing project. -->
+    <!-- Kept as a statement of intent, matching BrowserForWP.Crypto.vbproj. The
+         conditional PropertyGroup at the foot of this file sets the same value
+         when nothing else has, so this line changes no build. What makes the
+         project resolvable as a reference is the flavour GUID below. -->
     <TargetPlatformIdentifier>WindowsPhoneApp</TargetPlatformIdentifier>
     <MinimumVisualStudioVersion>12.0</MinimumVisualStudioVersion>
     <FileAlignment>512</FileAlignment>
-    <ProjectTypeGuids>{BC8A1FFA-BEE3-4634-8014-F334798102B3};{F184B08F-C81C-45F6-A57F-5ABD9991F28F}</ProjectTypeGuids>
+    <!-- See the note in BrowserForWP.Crypto.vbproj: this must be the Windows Phone
+         8.1 flavour, not the Windows Store one, or the IDE cannot resolve this
+         project as a reference from the app. -->
+    <ProjectTypeGuids>{76F1466A-8B6D-4E39-A767-685A06062A39};{F184B08F-C81C-45F6-A57F-5ABD9991F28F}</ProjectTypeGuids>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
@@ -130,9 +133,11 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Dns\DohResolver.vb" />
+    <Compile Include="Remote\SealedChannel.vb" />
     <Compile Include="Http\HttpClient13.vb" />
     <Compile Include="Tls13\CertificateValidator.vb" />
     <Compile Include="Tls13\ClientHelloBuilder.vb" />
+    <Compile Include="Tls13\PinStore.vb" />
     <Compile Include="Tls13\KeySchedule.vb" />
     <Compile Include="Tls13\ServerMessageParser.vb" />
     <Compile Include="Tls13\Tls13Client.vb" />

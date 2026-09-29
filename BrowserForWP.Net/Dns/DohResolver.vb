@@ -57,6 +57,19 @@ Namespace Dns
 
         Private ReadOnly _serverUrl As String
         Private _client As HttpClient13
+        Private ReadOnly _cache As New Dictionary(Of String, CachedEntry)()
+
+        ''' <summary>Cached answers with expiry (TTL respected, floor 60s, cap 1h).</summary>
+        Private NotInheritable Class CachedEntry
+
+            Public Sub New(answers As IList(Of DnsAnswer), expiresUtc As DateTime)
+                Me.Answers = answers
+                Me.ExpiresUtc = expiresUtc
+            End Sub
+
+            Public ReadOnly Answers As IList(Of DnsAnswer)
+            Public ReadOnly ExpiresUtc As DateTime
+        End Class
 
         Public Sub New(Optional serverUrl As String = Nothing)
             _serverUrl = If(String.IsNullOrEmpty(serverUrl), DefaultServerUrl, serverUrl)
@@ -75,6 +88,15 @@ Namespace Dns
         Public Async Function ResolveAsync(host As String) As Task(Of IList(Of DnsAnswer))
             If String.IsNullOrEmpty(host) Then Throw New ArgumentException("host required", "host")
 
+            Dim cacheKey As String = host.Trim().ToLowerInvariant()
+            Dim hit As CachedEntry = Nothing
+            If _cache.TryGetValue(cacheKey, hit) Then
+                If hit.ExpiresUtc > DateTime.UtcNow Then
+                    Return hit.Answers
+                End If
+                _cache.Remove(cacheKey)
+            End If
+
             Dim answers As New List(Of DnsAnswer)()
 
             Try
@@ -91,8 +113,26 @@ Namespace Dns
             If answers.Count = 0 Then
                 Throw New HttpProtocolException("no address records for " & host)
             End If
+            Dim ttlFloor As Integer = 3600
+            For Each ansItem In answers
+                If ansItem.TtlSeconds > 0 AndAlso ansItem.TtlSeconds < ttlFloor Then
+                    ttlFloor = ansItem.TtlSeconds
+                End If
+            Next
+            If ttlFloor < 60 Then
+                ttlFloor = 60
+            End If
+            If ttlFloor > 3600 Then
+                ttlFloor = 3600
+            End If
+            _cache(cacheKey) = New CachedEntry(answers, DateTime.UtcNow.AddSeconds(ttlFloor))
             Return answers
         End Function
+
+        ''' <summary>Clear the TTL cache (used when the DoH server changes).</summary>
+        Public Sub ClearCache()
+            _cache.Clear()
+        End Sub
 
         Private Async Function QueryAsync(host As String, recordType As Integer) As Task(Of IList(Of DnsAnswer))
             Dim transactionId As UShort = BitConverter.ToUInt16(WinRtCrypto.RandomBytes(2), 0)

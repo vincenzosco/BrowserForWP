@@ -1,6 +1,6 @@
 # Maintaining BrowserForWP
 
-Read [`ARCHITECTURE.md`](ARCHITECTURE.md) first — the three platform laws explain
+Read [`ARCHITECTURE.md`](ARCHITECTURE.md) first — the five platform laws explain
 why several otherwise-reasonable changes are impossible.
 
 ## Requirements
@@ -35,7 +35,9 @@ desktop .NET.
 Run these before committing. They are cheap and each covers a different layer.
 
 ```bash
-# Crypto + TLS 1.3 key schedule. Runs anywhere. Must print "52 assertions, 0 failure(s)".
+# Crypto + TLS 1.3 key schedule. Runs anywhere. Must print "53 assertions, 0 failure(s)".
+# The 53rd asserts brace balance on the VB it emits: an empty RFC 5869 case once
+# produced an unterminated initializer and broke the test project with BC30201.
 node tools/gen-vectors.mjs
 
 # Verify only, writing nothing. Useful in CI.
@@ -55,16 +57,109 @@ node tools/proto/tls13.mjs example.com
 node tools/proto/tls13.mjs www.google.com
 node tools/proto/tls13.mjs cloudflare.com
 
+# Core logic. Must print "core-logic checks, 0 failure(s)". This is a
+# transliteration of tests/BrowserForWP.Core.Tests/CoreLogicTests.vb, and it is
+# the only way those assertions execute at all off-device. Keep the two in step.
+node tools/proto/core-logic.mjs
+
+# The remote render servers: a primary, a secondary tried only when the primary
+# cannot be reached, and no third option. Must print "19/19 checks passed".
+# tools/proto/textmeasure.mjs and boxlayout.mjs used to sit here; they were the
+# referees for the on-device renderer and went with it (see "Round 9"), so this
+# slot is where a browser decides WHERE to render instead of HOW.
+node tools/proto/remote-servers.mjs
+
+# The render protocol's wire format, both directions, checked against the bytes
+# the SERVER's own code emitted (protocol/vectors.json in Docker-BrowserForWP).
+# Must print "91/91 checks passed". It is the only statement of the protocol that
+# neither implementation wrote, which is why a client-side typo in a field offset
+# is caught here rather than as a garbled screen on a phone.
+node tools/proto/remote-protocol.mjs
+
+# The input path: the hidden field that owns the soft keyboard, the gate that
+# serialises writes to the stream, the rotation that must move the server's
+# viewport AND this device's mapping, and the key names the keys bar offers.
+# Must print "7/7 remote-input checks passed". `--probe` plants each defect it
+# exists to catch and requires the matching check to refuse it: a check nobody
+# has seen fail is decoration, and this repository has shipped decoration twice.
+node tools/proto/remote-input.mjs
+node tools/proto/remote-input.mjs --probe
+
+# The engine-choice rule: what the automatic fallback decides, and the row that
+# matters most — an absent measurement is never grounds for switching engines.
+# Must print "23/23 checks passed".
+node tools/proto/engine-choice.mjs
+
+# The shell and delivery guards that arrived with the merged browser shell.
+node tools/proto/shell-guards.mjs    # picker/tab re-entrancy, completed URL, sln registration
+node tools/proto/trackerblock.mjs    # host blocklist matching
+node tools/proto/pinstore.mjs        # pin normalisation and comparison
+node tools/proto/useragents.mjs      # UA table and search-URL escaping
+node tools/proto/lightweight.mjs     # lite defaults, caps, resource keys
+node tools/proto/modern-sites.mjs    # shim markers, redirect rules, delivery wiring
+
+# The native document engine. These four are prototypes AND referees: the VB in
+# BrowserForWP.Core/Engine/Native/ is a hand transliteration of them, so when one
+# fails, first prove the check is right before "fixing" the VB. Between them they
+# have already rejected a CORRECT implementation three times -- a check that read
+# comments and so forbade documenting the rule it enforced, an assertion that had
+# dropped a child and so expected 2 where there are 3, and a mirror that tested
+# source text where the rule was about behaviour.
+node tools/proto/fetch-rules.mjs     # fetch rules: charset, media type, no Accept-Encoding
+node tools/proto/htmlparse.mjs       # tokenizer + tree builder, implicit head/body
+node tools/proto/csscascade.mjs      # CSS parse, specificity, matching, cascade, lengths
+node tools/proto/boxtree.mjs         # box tree, anonymous blocks, diagnostics wiring
+
+# The IE-adaptation decision record. Not a logic mirror: it asserts that
+# IeModeProbe.vb exists, stays ES5 and reads documentMode, and that this file still
+# records the four levers that make re-configuring Trident impossible.
+node tools/proto/ie-adapt.mjs
+
+# The sandbox-escape decision record, same kind of object, different instrument.
+# There is no probe for this one -- nothing inside the container can measure a
+# privilege it does not have -- so its evidence is the deployment-time fact: it
+# parses Package.appxmanifest and asserts the declared capabilities are still
+# resource access only. It also asserts that ARCHITECTURE.md Law 4 and the
+# "Sandbox escape is closed" section here still state the four levers.
+node tools/proto/sandbox-escape.mjs
+
+# The probe verdict rule. It exists because an empty MissingFeatures list from a
+# probe that never ran was rendered in the UI as "no missing web features detected".
+node tools/proto/probe-verdict.mjs
+
 # Confirm the polyfill shim is valid ES5 (comment-aware, so it does not
 # false-positive on backticks inside comments).
 node tools/check-polyfill.mjs
 
 # Static VB.NET structural check. Must print "0 finding(s)", exit code 0.
 # This is NOT a compiler. It catches block-balance errors, missing Implements
-# members, project/disk drift, namespace mismatch, resw key drift and unwired
-# XAML handlers — and it found a real End Property/End Class error. A green run
-# still does not mean the project compiles.
+# members, project/disk drift, namespace mismatch (including NESTED Namespace
+# blocks, which compose), resw key drift, unwired XAML handlers,
+# {ThemeResource} keys the platform does not define, project flavour GUIDs that
+# disagree with the target platform, (group 13) a plain ' comment stranded inside
+# a ''' doc block plus every doc-comment tag that is unknown, mis-nested or left
+# unclosed, (group 15) any use of Reflection.Emit, process creation, LoadLibrary
+# or RWX-memory allocation plus any manifest capability that asks for privilege
+# the platform cannot grant, (group 16) any API whose required capability the
+# manifest does not declare, and (group 17) any declaration that introduces a VB
+# keyword as a name — and it found a real End Property/End Class error. A green
+# run still does not mean the project compiles.
 node tools/check-vb.mjs
+
+# The keyword probe: measures, against the actual compiler, which VB keywords
+# vbc 12 refuses as an identifier. Group 17's list comes from here and NOT from
+# the language reference, which lists `Out` as reserved while
+# `Dim out(31) As Byte` compiles -- and it is on disk in X25519.vb. Needs the
+# guest; the check itself does not.
+prlctl exec "{66a2f493-162c-4b3f-ba40-0a26020cc818}" cmd /c \
+    "C:\Mac\Home\Documents\BrowserForWP\tools\keyword-probe.cmd"
+
+# Regenerate the theme-resource key list that check-vb.mjs group 9 reads: the
+# keys Windows Phone 8.1 itself defines, read out of the guest's design
+# dictionaries. Do NOT point this at Windows Kits\8.1 — the desktop set is a
+# different set, and a desktop-only key is precisely the bug the check exists to
+# catch. Needs the guest; the check itself does not.
+bash tools/wp81-theme-keys.sh
 
 # Regenerate every WP8.1 image asset from the renderer.
 python3 tools/make_logo.py
@@ -72,8 +167,8 @@ python3 tools/make_logo.py
 
 Those vectors also produce `tests/BrowserForWP.Crypto.Tests/Vectors.generated.vb`.
 That file is **generated** — never edit it by hand; regenerate it with
-`node tools/gen-vectors.mjs`. The MSTest project it was written for was
-**not created**, so nothing currently asserts it.
+`node tools/gen-vectors.mjs`. It is compiled by the guest build, but nothing
+executes the project that contains it.
 
 See "Where the tests actually are" below before assuming those vectors are being
 checked by a VB test run.
@@ -168,6 +263,30 @@ already covers the need.
 When adding a capability flag, set it to what the engine **actually** does.
 `TridentEngine` claiming `SupportsTls13 = True` would be a lie that the UI then
 repeats to the user — see the guard in the plan's Task 11, Step 3.
+
+### The native document engine
+
+`BrowserForWP.Core/Engine/Native/` is a second engine, built from scratch, whose
+**front half** exists: fetch, tokenize, build the tree, parse CSS, match
+selectors, resolve the cascade, build a box tree. Layout and rendering are Phase 2
+and are not written. It executes no JavaScript, and never will.
+
+Two rules apply, and both are enforced by prototypes rather than by inspection:
+
+- **Change the prototype first.** `tools/proto/htmlparse.mjs`,
+  `csscascade.mjs` and `boxtree.mjs` are executable specifications; the VB is a
+  hand transliteration of them, because nothing in this environment executes VB.
+  Change the `.mjs`, watch it pass, then port.
+  `Engine/Native/NodeTypes.vb` is the vocabulary both sides share — rename a type
+  there and the mirrors must follow in the same commit, and vice versa.
+- **`Engine/Native/` must not reference `BrowserForWP.Net`.** Fetching is a seam
+  (`IDocumentFetcher`) that the app layer implements
+  (`BrowserForWP/Diagnostics/NetDocumentFetcher.vb`). That is what keeps Core free
+  of the transport, and what makes the engine exercisable without a network.
+
+Adding a stage means adding its mirror in the same commit. A stage with no mirror
+has no way to fail before a handset run, and this pipeline's defects have so far
+been found by execution, never by reading.
 
 ## Build host requirements
 
@@ -265,7 +384,7 @@ Approximately 78 errors, but they were the product of two defects:
 | `The property "Content" can only be set once. MainPage.xaml (1,1)` | `MainPage.xaml` had **two direct children of `<Page>`** (the layout grid and the settings overlay). `Page.Content` can hold one object. | Wrapped both in a single root `<Grid>`; the overlay is declared second so it still draws on top. |
 | `'Sub Main' was not found`, `'InitializeComponent' is not declared`, and ~65 × `'<Name>' is not declared` | **Consequences of the first row.** The XAML compiler rejected `MainPage.xaml`, so `MainPage.g.vb` was never generated — no partial class, therefore no `x:Name` fields and no generated entry point. | Same fix. |
 | `Value '128274' cannot be converted to 'Char'` (×2) | `ChrW(&H1F512)` / `ChrW(&H1F513)`. Those are supplementary-plane code points; a `Char` is 16 bits. | `Char.ConvertFromUtf32`. |
-| `'Localization' is not declared`; `Type 'IBrowserEngine' / 'BrowserSession' / 'TridentEngine' is not defined`; `The referenced component 'BrowserForWP.Core' / '.Crypto' / '.Localization' could not be found` | The three library projects produced no referenceable assembly. Likely because they declared no `TargetPlatformIdentifier`, so a WP8.1 app cannot resolve them as references. | Added `<TargetPlatformIdentifier>WindowsPhoneApp</TargetPlatformIdentifier>` to all four library projects. |
+| `'Localization' is not declared`; `Type 'IBrowserEngine' / 'BrowserSession' / 'TridentEngine' is not defined`; `The referenced component 'BrowserForWP.Core' / '.Crypto' / '.Localization' could not be found` | **CORRECTED in Round 6 — the diagnosis written in this row was wrong.** The libraries did produce referenceable assemblies: they compile, and their output is present for all six configurations. The "declared no `TargetPlatformIdentifier`" explanation cannot hold either, because each file already set that value in the conditional `PropertyGroup` at its foot, so the line this row credits changed no build. The `could not be found` family is emitted by the IDE's project system, which compares project **flavour GUIDs**: the libraries carried the Windows Store flavour while the app carried the Windows Phone 8.1 one. | `<TargetPlatformIdentifier>WindowsPhoneApp</TargetPlatformIdentifier>` was added to all four library projects. It is a no-op, kept as documentation. The fix that actually removes the warnings is the flavour swap in Round 6. |
 | `Impossibile trovare il percorso specificato.` (no file attributed) | A project-level build step failed. Building over a Parallels **shared folder** is the prime suspect: MSBuild and the XAML/PRI compiler are unreliable on that path. | **Copy the repository to local disk in the guest and build there.** |
 
 **The lesson worth keeping:** the two defects in rows 1 and 3 were the whole
@@ -333,20 +452,46 @@ file parsing correctly is exactly what makes this look like a code problem.
 `BUILD_EXIT=0`, no `BC` errors, and the package set is produced. Two further
 defects were found and verified by experiment:
 
-1. **A XAML theme key that does not exist on WP8.1.** `MainPage.xaml` used
-   `Background="{ThemeResource TextBoxBackgroundThemeBrush}"`, a **Windows Phone
-   8.0 (Silverlight)** key. WP8.1 XAML does not define it, and the failure is a
-   non-fatal internal lookup error:
+1. **A XAML theme key that does not exist on WP8.1. THIS ENTRY WAS WRONG, AND THE
+   SWAP IT DESCRIBES IS THE BUG.** Read the correction before using any part of it.
+   What the round did: `MainPage.xaml` used
+   `Background="{ThemeResource TextBoxBackgroundThemeBrush}"`, and that key was
+   replaced with `TextControlBackground` on the evidence that "the diagnostic
+   disappears, and returns when the old key is restored".
 
-   ```
-   Microsoft.Windows.UI.Xaml.Common.targets(327,9): Xaml Internal Error error
-   WMC9999: La chiave specificata non era presente nel dizionario.
-   ```
+   Both halves of that evidence are false.
 
-   It does not fail the build, so the brush just stays unset at runtime and the
-   message survives review indefinitely. Verified by swapping the key to
-   `TextControlBackground`: the diagnostic disappears, and returns when the old
-   key is restored. `ApplicationPageBackgroundThemeBrush` *is* a valid WP8.1 key.
+   - `TextBoxBackgroundThemeBrush` **is** a Windows Phone 8.1 key. It is defined in
+     the phone's own design dictionary
+     (`C:\Program Files (x86)\Windows Phone Kits\8.1\Include\abi\Xaml\Design\themeresources.xaml`,
+     `x:Key="TextBoxBackgroundThemeBrush"`, line 264) and *used by the phone's own
+     `TextBox` style* (`generic.xaml`, line 2413). It is not a WP8.0 Silverlight
+     name. `ApplicationPageBackgroundThemeBrush` is valid too, which that entry
+     gets right.
+   - `TextControlBackground` is defined **nowhere** on this platform: none of the
+     523 keys in the phone's dictionaries is it. The nearest name,
+     `TextControlBackgroundThemeOpacity`, is a `Double` where a `Brush` is needed.
+     It is a UWP / Windows 10 name, and the Windows 8.1 *desktop* dictionaries do
+     not define it either.
+   - The diagnostic the swap rested on does not track the key at all. It appeared
+     in **12 of 12** runs of the matrix documented further down this file, every one
+     of them taken *with* the swapped key in place, and it appears again now that
+     the key is back (`docs/superpowers/plans/2026-09-28-xaml-theme-resources.md`,
+     "Outcome").
+
+   So the swap replaced a working key with one that cannot resolve, and the
+   address-bar brush of `MainPage.xaml` has been unresolvable ever since. A Visual
+   Studio session reports it while reading the XAML — `The resource
+   "TextControlBackground" could not be resolved.` — because `{ThemeResource}` is
+   resolved when the page *loads*, not when it compiles, so no build here can see
+   it. `tools/check-vb.mjs` group 9 can: it checks every `{ThemeResource}` key in
+   the app's XAML against `tools/wp81-theme-keys.txt`, the 523 keys extracted from
+   the phone's own dictionaries by `bash tools/wp81-theme-keys.sh`.
+
+   **The transferable lesson:** a diagnostic whose presence varies between sessions
+   is not evidence about source code. The original probe was right that WMC9999 is
+   deterministic and harmless *within* a session, and wrong to let a single
+   before/after observation of a varying log line rewrite a platform name.
 
 2. **Ambiguous image assets.** The packaging step warned six times with
    `APPX1621`: a mixture of `Assets\Logo.png` and `Assets\Logo.scale-240.png`
@@ -396,6 +541,13 @@ App.xbf      = b7af0673a52d230302275b6c60fa2a64
 MainPage.xbf = 817580f71c93802ca8818c328074ea85
 ```
 
+**It is also independent of the XAML theme keys, which had once been believed to
+cause it.** Round 4 swapped a `{ThemeResource}` key specifically to silence this
+diagnostic; every one of the 12 runs above was taken with that swapped key present,
+and the diagnostic is still there now that the key has been removed again. It is not
+caused by any key in `MainPage.xaml`, and it is never a reason to edit a source file
+— correcting a real bad key is a separate matter, covered by check group 9.
+
 Earlier in the same day, isolated ad-hoc builds reported `WMC9999=0` three times
 with sources that are not distinguishable from today's, including one solution
 build with `/p:BuildProjectReferences=false`. Those zeros are **not reproduced**
@@ -430,31 +582,323 @@ level, to test whether running the toolchain under Arm64 emulation is the trigge
 `tools/vm-build.cmd` allow-lists this diagnostic **by name** and fails the build
 on every other `error BC` / `error MSB` / `error APPX` line.
 
+### Round 5 — the merged fork is reviewed, and made to build
+
+A second repository was merged into `main` as PR #2 (branch `Gjhkyio/main`, 20
+commits, 42 files). It closes the three gaps Round 4 left open and adds the
+browser shell: polyfill injection, a TLS probe runner, a pin store, tabs, find,
+reading and night modes, tracker blocking, lite redirects, persisted settings,
+history and favourites, and two VB test projects.
+
+It was merged **without ever running the guest build.** The first guest build
+after the merge failed with four distinct defects. All four are fixed, and each
+one is a family worth recognising again:
+
+1. **A profile gap in `List(Of T)`.** `HistoryStore.List()` called
+   `_entries.AsReadOnly()`. `ReadOnlyCollection(Of T)` is not part of the
+   ".NET for Windows Store apps" profile, so this is `BC30456` — the same shape
+   as the `SHA256` / `Encoding.ASCII` gaps above, and `tools/check-vb.mjs`
+   cannot see it. Replaced with the profile-safe copy,
+   `New List(Of HistoryEntry)(_entries)`.
+2. **A solution platform mapping with no matching conditional group.** The tests
+   were added to `BrowserForWP.sln` with `Debug|ARM.Build.0 = Debug|ARM`, but
+   their `.vbproj` files only defined `Debug|AnyCPU`. A solution build for ARM
+   then fails inside `Microsoft.Common.CurrentVersion.targets` with "The
+   OutputPath property is not set for project …" — an error that names the
+   *pair*, never the missing `PropertyGroup`. Both test projects now carry the
+   same six configurations (`AnyCPU`/`ARM`/`x86` × Debug/Release) as every other
+   library here.
+3. **An emitter that only worked for non-empty data.** `tools/gen-vectors.mjs`
+   wrote `New Byte() { _` with **no closing brace** for a zero-length vector.
+   RFC 5869 case 3 has an empty salt *and* an empty info, so the generated
+   `Vectors.generated.vb` contained two unterminated initializers that swallowed
+   the declarations after them: `BC30201` in the test project. The generator now
+   has an explicit empty case **and** asserts brace balance on the emitted VB,
+   refusing to write the file when it is unbalanced. Verified by negative
+   control: the pre-fix file has 57 `{` and 55 `}`.
+4. **Deprecated WinRT APIs.** `WebView.NavigationFailed` and
+   `DataPackage.SetUri` both raise `BC40000` here. Failure is now handled through
+   `NavigationCompleted`'s `IsSuccess` / `WebErrorStatus`, which carry the reason
+   the deprecated event does not, and the share path uses `SetWebLink`. Both of
+   those warnings are gone; the only warnings left are the two deliberate,
+   already-documented `ResourceLoader` ones above.
+
+   **Count warnings from a rebuild, never from an incremental build.** After the
+   first fix round this build reported "Warnings: none" — and that was wrong, or
+   rather it was measured against the wrong thing: an incremental build reuses the
+   cached `BrowserForWP.Localization` DLL and never recompiles `Localizer.vb`, so
+   it hides that project's two warnings. `tools\vm-build.cmd /t:Rebuild` shows
+   them. A cleaner-looking log is not a cleaner tree.
+
+Also found and fixed while reviewing, none of which a compiler could see:
+
+- Both test projects **compiled but nothing executed them.** See "Where the
+  tests actually are".
+- The Settings overlay was titled **"Diagnostics"**: the two heading keys were
+  swapped with the engine label. `DiagnosticsTitle` now reads "Diagnostics", the
+  engine block is labelled "Rendering engine", and the previously hardcoded
+  English `"compatibility layer active"` / `"native"` are catalogue keys.
+- The engine status was prefixed with `DiagnosticsProbe` — the TLS probe's own
+  label, "Run TLS probe" — producing "Run TLS probe: native".
+  `DiagnosticsProbe` was a duplicate of `TlsProbeRun` and is deleted.
+- The security-details dialog embedded English `"(TLS 1.2 max, WebView). UA="`
+  in code. It is now the `SecurityWebViewCeiling` key in both languages.
+- `ErrorNoConnection`, `Loading`, `LoadComplete`, `PinMismatch` and
+  `SecurityTls13` had no consumer. All five are wired (failure reason, status
+  line, pin verdict, probe headline). **61 resource keys, 0 unused, en/it parity
+  intact** — checked with a real XML parser, not a tag count.
+- `TlsProbeRunner` carried a second copy of the pin comparison; it now calls
+  `CertificateValidator.VerifyPin`, so there is one implementation.
+  `TlsProbeResult` gained `PinMismatch` so the UI shows the localized sentence
+  instead of the English `pin-MISMATCH` token buried in the detail line.
+
+**Unchanged on purpose:** `AddressNormalizer` refuses `localhost:8080`, because a
+colon before any slash is read as the scheme `localhost`. The comment above that
+branch promises localhost support; in practice only a `localhost` with *no* port
+navigates. Left as-is and recorded: loopback is unreachable from an AppContainer
+anyway, and that class is security-relevant parsing a merge review should not
+rewrite without a device test to justify it.
+
 ### Still open
 
-1. **The polyfill is packaged but never injected.** `compat.js` now ships in the
-   app, but nothing reads it: `TridentEngine` has no injection code, only
-   `InvokeScriptAsync`. The README claims the polyfill is "injected into every
-   document before scripts run" — **that is not yet true.** Either implement
-   injection on navigation (read from the app package, then
-   `InvokeScriptAsync("eval", ...)` before the document scripts run) or soften the
-   claim. Do not leave the README asserting a behaviour the code does not have.
+Items 1–3 of the previous revision are **closed** by Round 5: injection, the
+probe and the pin store all exist and are wired. What remains is this.
 
-2. **The TLS 1.3 stack is compiled and shipped, but unreachable from the app.**
-   `BrowserForWP.Net` is referenced by the app project and builds, so
-   `Tls13Client`, `HttpClient13` and `DohResolver` all end up in the package — but
-   **nothing calls any of them.** The `WebView` performs every navigation through
-   Schannel, so the TLS 1.3 path has no entry point in the UI. Task 15 Step 2 of
-   `2026-09-28-browserforwp.md` specifies `Diagnostics/TlsProbe.vb`, the component
-   that would have connected them; that file **does not exist**. Until it does,
-   treat "the app speaks TLS 1.3" as describing the library, not the browser.
+1. **The VB test projects compile, but nothing executes them.** Both are in
+   `BrowserForWP.sln` and the guest build produces their DLLs — real progress on
+   the Round 4 gap — but no runner invokes `RunAll()`. A WP8.1 ARM class library
+   cannot run on the desktop, and there is no handset and no emulator, so
+   **"compiled" is not "tested"**. The assertions now run off-device through
+   `tools/proto/core-logic.mjs` (66 assertions), a transliteration of
+   `CoreLogicTests.vb` that must be kept in step with it. That mirror exists
+   because the VB suite's first defect was invisible without execution: an
+   assertion naming the heavy `duckduckgo.com` search URL that the lite-first
+   default had replaced.
+2. **Pinning is enforced only on the app's own transport.** `PinStore` and
+   `CertificateValidator.VerifyPin` are real and wired, so a stored pin is checked
+   against the leaf SPKI on every probe and a mismatch is surfaced. They **cannot**
+   apply to browsing: the `WebView` rides Schannel, whose validation this app
+   cannot hook. A pin therefore protects the app's TLS 1.3 path, never the pages
+   you *view* in the `WebView`.
 
-3. **Certificate pinning is advertised but not implemented.** `README.md` lists
-   "user-managed per-site pins with explicit, reversible override" under features.
-   There is no pinning code anywhere: no pin store, no pin comparison in
-   `Tls13/CertificateValidator.vb`, and no resource keys for a UI. The same
-   question as item 1 applies — implement it or soften the claim. Note that
-   `CertificateValidator` validates the chain only; that is not pinning.
+   **Corrected while reviewing this phase, because the sentence above had become
+   half-false.** Once `NetDocumentFetcher` existed, a *parsed* page started
+   travelling the app's own TLS 1.3 path — and `FetchAsync` did not check pins, so
+   a pinned host was fetched with its pin silently ignored while this file claimed
+   the path was protected. It now passes `SessionInfo.LeafCertificateDer` through
+   `CertificateValidator.VerifyPin` before decoding the body, and an unreadable
+   certificate fails rather than passing. So: a page **viewed** in the `WebView` is
+   still unpinned (impossible — Schannel); a page **parsed** by the diagnostics
+   fetcher is pinned. `README.md`'s "certificate pinning for the app's transport layer" is
+   accurate, and the qualifier is now load-bearing, not decorative.
+3. **Never run on a handset.** XAML layout, `WebView` behaviour,
+   `DOMContentLoaded` injection, reading-mode fallback, lite redirects, night mode
+   and 2014-hardware performance are all unverified. Compiling is not running.
+
+### IE-adaptation is closed
+
+"Adapt Internet Explorer instead of writing an engine" was examined and closed.
+Trident **is** the platform engine, and an app cannot re-configure it. The four
+levers such a plan needs, and why each is absent:
+
+- **no API to set the WebView document mode.** `WebView` exposes no document-mode
+  property, and the hosted engine is already the newest available.
+- **no Trident newer than IE11 ever shipped for this OS.** There is nothing to
+  move up to; `X-UA-Compatible: IE=edge` selects the engine that is already
+  running.
+- **no API to toggle IE11 feature flags.** WP8.1 gives an app no switch over
+  which CSS/JS features Trident honours.
+- **no MSHTML surface is reachable from a WinRT app.** No COM activation of
+  `mshtml`, no `IWebBrowser2`, no document-mode control.
+
+What an app *can* do is what this repository already does: inject an ES5
+compatibility layer into the document (`TridentEngine.InjectPolyfillAsync`) and
+report the engine's limits truthfully (`CompatibilityProbe`).
+
+`BrowserForWP.Core/Diagnostics/IeModeProbe.vb` plus a **Diagnostics → IE mode**
+tap is how a handset turns that from an argument into a measurement. Until
+someone runs it, the probe is the instrument and this section is the claim — keep
+the two distinct, and record the measured `documentMode` here when it happens.
+
+### Round 8 — the native engine becomes an engine you can pick
+
+Round 7 drew a page behind a Diagnostics button. This round made that reachable
+the way every other page is: Settings gains a rendering-engine choice
+(*Automatic*, *System WebView*, *BrowserForWP native*), and the
+320-pixel preview, its button and its resource key are gone. The native engine
+draws into `ContentHost`, so the address bar, the tab list, the history store and
+the hardware Back button drive it unchanged.
+
+- **`EngineChoice`** is the selection rule as pure Core logic: an explicit choice
+always wins over the probe, and an *absent* measurement never moves anything.
+That last row is the one that matters, and `tools/proto/engine-choice.mjs`
+refuses it exhaustively — the repository has already shipped one lie of that
+shape, when a probe that never ran was reported as "no missing web features
+detected".
+- **`NativeEngine`** implements the existing seam. `Source` returns one `Border`
+created once, because the shell takes that object at wire time and keeps it.
+It claims `SupportsTls13 = True`, which no other engine in this product may
+honestly claim, because the fetch goes through `BrowserForWP.Net` rather than
+Schannel.
+- **`EngineCapabilities.SupportsScripting` is new, and `NeedsPolyfillLayer`
+  stopped being `Not SupportsModernJavaScript`.** That expression was wrong for
+an engine with no script host: it would have answered `True` and had the shell
+inject `compat.js` into a document with no `window`. Three shapes, all asserted.
+- **The reader fallback and the engine fallback are alternatives now.** When a
+measurement says Trident cannot cope, rendering with our own engine beats
+injecting a reader, and doing both would fight over one document. The reader is
+still reachable from the Reading button.
+
+**Two corrections this round made to earlier documents.** The Phase-2 roadmap in
+`2026-09-29-native-engine-pipeline.md` said the automatic fallback should fire
+when `CompatibilityProbe.CouldRun` is `False`. That is the exact mistake
+`EngineChoice` exists to refuse, and the implemented rule is stricter: only a
+measurement that *ran* may move the engine. And `docs/ARCHITECTURE.md` claimed
+the engine seam makes the engine "a configuration detail instead of an assumption
+baked into every call site": that is still true of behaviour and newly false of
+construction, because the shell knows two engine types at one site. Both are now
+recorded where the claims are made.
+
+**The guest found what no checker could.** `ApplyLocalizedStrings` still set the
+`Content` of the button whose XAML had just been deleted — `BC30451`, reported
+against the page rather than against the handler. Four subsystems had to agree
+for this round to work (Core, the engine, the XAML and two resource files) and
+only the compiler checks that all four do.
+
+**Verified:** six configurations `BUILD_EXIT=0` with only the two deliberate
+`ResourceLoader` warnings; `engine-choice.mjs` 21/21; `boxtree.mjs` 48/48 (six of
+those are the transliterated `PageCss`, which moved out of `MainPage` this round);
+`core-logic.mjs` 60 assertions; `check-vb.mjs` 0 finding(s).
+**Not verified:** the on-device output. Nothing in this round has run on a
+handset either, and the engine picker itself has never been seen. The first handset
+session should record, in this section, what the automatic fallback actually does
+on a real broken page.
+
+### Sandbox escape is closed
+
+"Let the app start sandboxed and step outside when a request arrives" was
+examined and closed, the way IE-adaptation was, and it is the reason
+`docs/ARCHITECTURE.md` has a Law 4. The four levers such a plan needs, and why
+each is absent:
+
+- **no self-de-sandboxing API.** Container membership lives in the process token
+  and is set by the parent at creation; nothing in WinRT changes it, and WP8.1's
+  profile exposes no process creation. There is also no JIT to unlock: an
+  AppContainer denies writable+executable pages, and the `NETFX_CORE` profile has
+  no `Reflection.Emit`. A patched SDK does not help — the SDK decides what
+  compiles, the kernel decides what the process may do.
+- **a child process inherits the container.** Where process creation exists at
+  all (Windows 10, not WP8.1) a child born from an AppContainer app is created in
+  that same container. A "free" helper has to be launched by a full-trust parent,
+  which the app is not.
+- **capabilities grant resources, never memory policy.** Privilege is declared at
+  package time; this one declares `internetClientServer` and nothing else.
+  `runFullTrust` and `codeGeneration` are Windows 10 capabilities, and
+  `runFullTrust` is restricted to Microsoft-signed packages.
+- **broker contracts perform specified operations.** An `AppServiceConnection`
+  does a defined job for an app; it does not hand over a DOM, a renderer or
+  memory. WP8.1 app services were app-to-app only, with both manifests declaring
+  the relationship.
+
+`tools/proto/sandbox-escape.mjs` asserts the manifest fact — that this package
+still asks for resource access only — and that this section still states the four
+levers. It is a decision record like `ie-adapt.mjs`, not a logic mirror, and it has
+no runtime instrument on purpose: nothing inside the container can measure a
+privilege it does not have.
+
+**And the Windows 10 answer, because it gets asked every time.** On Windows 10
+*desktop* a packaged app using the desktop bridge is a real Win32 process: it can
+JIT, spawn processes and ship its own engine, which is how packaged CEF and
+WebView2 applications exist. That is a deployment-time decision rather than a
+request-time escape, and it was never available on Windows 10 *Mobile*. So the
+question "couldn't we have a modern engine?" has a yes in it — on a different
+operating system, as a different project.
+
+### Deferred work
+
+Recorded rather than fixed. None of these is a broken promise; each is a place
+where the code is more confident than the corpus of checks behind it. Items 1 to
+10 are inherited from the native-engine phase, whose renderer was deleted in
+Round 10 while the parser it left behind (and the diagnostics that show it) stayed;
+items 11 onwards are current.
+
+1. **The pipeline has never seen a real page.** Tokens, tree, cascade and boxes
+   have only ever run against the prototypes' own fixtures. The first real
+   document is the real test, and no check in this repository predicts it.
+   Likewise, `NetDocumentFetcher`'s redirect loop and its latin1 branch have
+   never run against a live server or a genuine latin1 page.
+2. **`line-height` is inherited as a resolved pixel value**, not as the
+   multiplier CSS inherits, so an element whose font-size differs from its
+   parent's keeps the parent's line box height. Invisible until there is layout.
+3. **An `http://` URL is accepted and then speaks TLS to port 80.** It fails, but
+   with a handshake error rather than "unsupported scheme".
+4. **A fresh `DohResolver` per fetch**, so its TTL cache never spans more than one
+   request. Correct and wasteful.
+5. **Error details are English tokens beside localized copy**, so a failure reads
+   "Recupero non riuscito. HTTP 404". The fix is an error code plus resource keys,
+   which is a design change rather than a patch.
+6. **`<pre>` loses its formatting**, because whitespace collapses everywhere. The
+   declared subset says so, but the user-agent sheet gives `pre` a monospace font,
+   which promises the opposite.
+7. **`IeModeProbe` mutates the document it inspects** by appending a `meta` tag.
+   That is deliberate, it is the strongest form of the test, and it is reachable
+   only from a Diagnostics button — know that before calling it anywhere else.
+8. **Layout has no collapsed-margin model and no auto-margin centring.** Spacing
+   between blocks is therefore slightly wider than a browser's, and a centred
+   `max-width` page (`margin: 0 auto`) will be left-aligned. Both are refinements
+   of `BlockLayout`, and both are visible only once there is layout.
+9. **`text-align` reads the container, not the line's own runs.** A line whose runs
+   disagree about alignment follows the block that holds it. The subset this engine
+   claims has one alignment per block.
+10. **A word wider than its line overflows instead of breaking.** Deliberate: a
+    split URL is a lie about the text. It is also how a long unbroken token becomes
+    a horizontal scrollbar.
+11. **The engine lifecycle is not on `IBrowserEngine`.** `NavigationStarting` and
+    `NavigationCompleted` are still re-raised from the `WebView` rather than
+the interface, so the shell wires whichever engine it built and therefore knows
+    two engine types at exactly one site. Behaviour still branches only on
+    `EngineCapabilities`; construction does not. Worth doing, and it is a bigger
+    diff across every call site than the user-visible feature it would unblock.
+12. **Pins are not enforced on the render channel.** `Tls13Client` takes a host and
+    no pin table, so `RemoteChannel` connects to a pinned server without consulting
+    `PinStore`. A pin is therefore checked by the diagnostics fetch and by the TLS
+    probe, and **not** by the engine that carries every page. `README.md` says so in
+    both languages rather than letting the feature read as universal.
+13. **No per-tab page state in the remote engine.** One connection, one page:
+    switching tabs navigates the same session and the page's own state (scroll
+    position, a form half filled) is gone. `BrowserSession` keeps URLs, not
+    documents.
+14. **CLOSED in Round 11 — a rotation resizes the remote viewport.**
+    `Window.Current.SizeChanged` re-measures, re-maps the screen and sends
+    `RESIZE`, and `tools/proto/remote-input.mjs` asserts all three parts. The item
+    is kept rather than deleted so that a reader who remembers the gap finds it
+    closed instead of gone.
+15. **The remote engine has never spoken to a server.** No part of the handshake,
+    the frame loop, the tile decode, the 1/dpr scale, the tap and scroll mapping,
+    the soft-keyboard proxy or the audio path has run against a live session.
+    `docs/MAINTAINING.md` § "The remote engine, verified by hand" is the table, and
+    its rows are blank.
+16. **The server bakes in no address, and that is deliberate.** Shipping a default
+    would send every page, and every password, through a machine the user did not
+    choose; the engine stays off until an address and a token are configured. One
+    line in `AppSettings` is all a default would need, and that line is not written
+    on purpose.
+17. **The page never tells the phone that a field took focus.** Nothing in the 23
+    message types says "focus moved", so the client cannot know whether a tap
+    landed on a text box, and **the soft keyboard therefore comes up on every
+    tap** — including on a link and on empty space. Fixing it is a new message in
+    this protocol, in `Docker-BrowserForWP` and in the vectors: worth doing, and
+    not a change to smuggle into the client. See the plan
+    `docs/superpowers/plans/2026-09-29-remote-input-path.md`.
+18. **The `KEY` message carries a modifier byte the server ignores.**
+    `browser.js` reads `{ key, text }` and drops `{ modifiers }`, so Shift+Tab and
+    Control+Enter are not expressible. The shell offers neither, and a button that
+    sent a modifier while pressing an unmodified key would be a lie in the UI.
+19. **The keys bar itself has never been seen.** It is nine buttons and a
+    scrollable strip in `MainPage.xaml`, wired by
+    `tools/proto/remote-input.mjs` to names the server can press and to labels in
+    both languages — and no handset has drawn it. It is one more row of § "The
+    remote engine, verified by hand" that is blank.
 
 ### Error taxonomy
 
@@ -471,12 +915,60 @@ Families actually observed, in order of how misleading they are:
   them; it could not before, and this was 24 errors in one file.
 - **Case-insensitive shadowing.** A local named after a type, property or
   enclosing member. The error names the *type*, never the local.
+- **Reserved words as member names.** `Public Property Error As String` is
+  `BC30183`, because `Error` is a reserved keyword in VB (the legacy `Error`
+  statement) and there is no fallback spelling. What makes this family misleading
+  is the *second*, spurious diagnostic it drags in: `BC42312`, "XML documentation
+  comments must precede a member or type declaration", pointing at a doc comment
+  that is perfectly correct — so the message you chase is the wrong one. Rename
+  (`ErrorMessage`) rather than escape (`[Error]`): escaping compiles, but it puts
+  brackets at every call site, a pattern nothing else in this repository uses.
+  Found by compiling the native-engine plan's Task 3, which had never been
+  compiled before it was executed.
 - **`Friend` across assemblies** (`BC30390`), and **nested classes** named
   unqualified from another file (`BC30002`).
 - **Profile gaps.** `System.Security.Cryptography` does not exist in the
   ".NET for Windows Store apps" profile — use `WinRtCrypto`.
   `Encoding.ASCII` and `RegexOptions.Compiled` are absent too.
   `tools/check-vb.mjs` now flags all three.
+- **More profile gaps, found in Round 5.** `List(Of T).AsReadOnly()` is not in the
+  profile either — `ReadOnlyCollection(Of T)` is missing, so the call is
+  `BC30456` rather than a silent degradation. Check any BCL helper against the
+  profile surface before using it; `tools/check-vb.mjs` flags this family.
+- **`ControlChars` is not in the Store profile** (`BC30451`) — even though
+  `Microsoft.VisualBasic.Strings` is, since `AscW` and `ChrW` both compile. So the
+  shape of `Microsoft.VisualBasic` here is partial, and the friendly constants
+  (tab, CR, LF, form feed) are exactly the part that went missing. Test whitespace
+  with `Char.IsWhiteSpace`, which is what the class-attribute split in
+  `SelectorMatcher` does. Found by compiling the native-engine plan's Task 5;
+  `tools/check-vb.mjs` now flags it as well.
+- **APIs that compile and then fail at run time.** `System.Text.Encoding.GetEncoding`
+  *is* in this profile — the guest build accepts it, so it is **not**
+  `BC30456` — yet Microsoft's own documentation for the method says unsupported
+  code pages throw (`ArgumentException` for some, `NotSupportedException` for
+  others) and that callers must catch rather than trust. Whether
+  `GetEncoding("ISO-8859-1")` resolves on a WP8.1 handset cannot be settled from
+  this machine, so no code here may depend on either answer: `NetDocumentFetcher`
+  asks and falls back to UTF-8. Note the shape of this family — the compiler is
+  *silent*, so a build-only check can never see it, and "it built" is not
+  evidence about it. A plan that anticipated `BC30456` here was anticipating the
+  wrong failure.
+- **A `Configuration|Platform` pair with no `PropertyGroup`.** Adding a project to
+  the solution with `Debug|ARM.Build.0 = Debug|ARM` while its `.vbproj` defines
+  only `Debug|AnyCPU` fails the entire build with "The OutputPath property is not
+  set for project … Configuration='Debug' Platform='ARM'". The message names the
+  pair, never the missing group. Every library in this repo defines all six.
+- **Generated code that was only ever tested on non-empty data.**
+  `gen-vectors.mjs` emitted `New Byte() { _` with no closing brace for a
+  zero-length vector, so the generated file failed to compile (`BC30201`) for
+  RFC 5869 case 3 — a case with an empty salt *and* an empty info. Checked inputs
+  are not a checked emitter: the generator now asserts brace balance on its own
+  output before writing it.
+- **Deprecated WinRT APIs.** `WebView.NavigationFailed` and
+  `DataPackage.SetUri` are `BC40000` on this OS. Prefer `NavigationCompleted`'s
+  `IsSuccess` / `WebErrorStatus` (they carry the reason, the deprecated event does
+  not) and `DataPackage.SetWebLink`. Treat a new `BC40000` as a design question
+  rather than as noise to allow-list.
 - **XML comment hazards.** A `--` run inside a `<!-- -->` comment makes MSBuild
   refuse to load a project (`MSB4025`), which surfaces from a solution build as
   the unrelated-looking `MSB4078` "project file is not supported by MSBuild". An
@@ -487,6 +979,490 @@ Families actually observed, in order of how misleading they are:
   `BrowserForWP` precisely because its sources declare `Namespace Crypto`;
   `BrowserForWP.Net.vbproj` must keep `BrowserForWP.Net` because its sources
   import `BrowserForWP.Net.Tls13` and `BrowserForWP.Net.Http`.
+
+### Round 6 — the flavour GUID behind four IDE warnings
+
+**Reported:** four warnings in the Visual Studio error list, all attributed to the
+app project, none of them with a diagnostic code.
+
+```
+The referenced component 'BrowserForWP.Core' could not be found.
+The referenced component 'BrowserForWP.Crypto' could not be found.
+The referenced component 'BrowserForWP.Net' could not be found.
+The referenced component 'BrowserForWP.Localization' could not be found.
+```
+
+**What was ruled out.** The four `<ProjectReference>` items are well formed:
+existing paths, `<Project>` GUIDs matching each library's own `<ProjectGuid>`,
+`<Name>` equal to each `<AssemblyName>`. Every referenced project is in the
+solution with `ActiveCfg` and `Build.0` for all six configurations, and each
+library's `bin` output exists for all six. A `Rebuild` is `BUILD_EXIT=0` in all
+six configurations — the four `ARM`/`x86` ones as solution builds, the two
+`Any CPU` ones as project builds, since that solution platform's name contains a
+space and cannot survive `prlctl exec`. Nothing is missing, so the message is not
+about absence.
+
+**What the message is.** Not a compiler diagnostic. Every other failure in this
+file carries a code (`BC30456`, `MSB4078`, `APPX1621`); this one carries none,
+which places it in the IDE's project system rather than in `vbc`. The string
+"referenced component" does not occur anywhere under
+`C:\Program Files (x86)\MSBuild`, under the Windows Phone 8.1 SDK, or under
+`C:\Program Files (x86)\Windows Kits\8.1` on the guest. **No build on this project
+could ever have printed it**, which is why `tools/vm-build.cmd` stayed green
+through every round the warning was present.
+
+**The cause.** The first GUID in `ProjectTypeGuids` is the project *flavour*, and
+a Windows Phone 8.1 app may only resolve references to a project of the same
+flavour. The four libraries — and both test libraries — declared
+`{BC8A1FFA-BEE3-4634-8014-F334798102B3}` while also declaring
+`TargetPlatformIdentifier` `WindowsPhoneApp`. The two statements contradict each
+other, and the project system reads the GUID.
+
+That GUID is not a guess and neither is the replacement. Both values come from
+the VS2013 templates in the guest:
+
+| Template, under `Common7\IDE\ProjectTemplates\VisualBasic\` | Flavour GUID |
+| --- | --- |
+| `Windows Phone 8.1\1033\WindowsPhoneClassLibrary\ClassLibrary.vbproj` | `{76F1466A-8B6D-4E39-A767-685A06062A39}` |
+| `Windows Phone 8.1\1033\WindowsPhoneBlankApplication\Application.vbproj` | `{76F1466A-8B6D-4E39-A767-685A06062A39}` |
+| `Windows Store\1033\ClassLibrary_WindowsStoreApps\ClassLibrary.vbproj` | `{BC8A1FFA-BEE3-4634-8014-F334798102B3}` |
+
+The app template and the Windows Phone 8.1 class library template agree, and
+these project files carried the value from the third row. `MSBuild` never reads
+`ProjectTypeGuids`, which is exactly why this survived five rounds of green guest
+builds.
+
+`BrowserForWP.sln` states a project type GUID per project too, and it disagreed
+the same way: `{BC8A1FFA-...}` for the six libraries, `{F184B08F-...}` — the plain
+VB language GUID — for the app. Which of the two statements the IDE acts on was
+settled by looking at what is registered:
+
+```
+reg query "HKLM\SOFTWARE[\WOW6432Node]\Microsoft\VisualStudio\12.0" /s /f "<guid>"
+```
+
+Only `{F184B08F-C81C-45F6-A57F-5ABD9991F28F}` is registered there, as the VB
+project factory (under `Projects` and `LocalData`). Neither flavour GUID appears
+anywhere in the VS2013 hive, so a `.sln` entry cannot select a Store or Phone
+factory on its own.
+
+**CORRECTED in Round 12 — what followed here was wrong.** It continued "and the
+project file is what the loader falls back to", and concluded that the `.sln` was
+a consistency fix rather than a cure. There is no fallback. A solution whose
+`Project` lines name an unregistered factory loads **no project at all**, and a
+registry query settles which factories exist, not what the loader does with a name
+that is not among them. Round 12 measured it and moved the `.sln` to
+`{F184B08F-...}`; the flavour stays in the `.vbproj`, which is the other rule.
+
+**Fixed** by swapping the flavour GUID in `BrowserForWP.Core`, `.Crypto`,
+`.Localization`, `.Net` and both test libraries, and in the seven `Project`
+entries of `BrowserForWP.sln`, so both files say `{76F1466A-...}` everywhere. The
+four comments that credited the `TargetPlatformIdentifier` line with making the
+project resolvable were wrong and are corrected; the line itself is kept, because
+it agrees with the conditional `PropertyGroup` at the foot of each file, and it
+now says why it is there.
+
+**Enforced** by group 14 of `tools/check-vb.mjs`: a project that declares
+`TargetPlatformIdentifier` `WindowsPhoneApp` must carry the Windows Phone 8.1
+flavour, the Windows Store flavour must not appear in any project here, and a
+`.sln` entry must carry the same flavour as its project. Against the reproduced
+pre-fix state the group is RED with 13 findings — six `.vbproj` and seven
+`BrowserForWP.sln` lines — and GREEN against these files. Its message quotes both
+template paths so the next reader can re-derive the rule instead of trusting it.
+
+**Noticed while measuring it:** the two solution platforms named `Any CPU` cannot
+be selected from the host with `/p:Platform="Any CPU"` — `prlctl exec` reaches
+`cmd.exe` as one string and MSBuild splits the argument at the space. Build the app
+project with `/p:Platform=AnyCPU` instead; the effect is the same, and that is how
+the two `Any CPU` configurations were checked. All six end in `BUILD_EXIT=0`,
+carrying only the two deliberate `ResourceLoader` warnings.
+
+**What this does not prove.** The diagnostic itself cannot be reproduced off the
+IDE, because the project system is the component that emits it. The evidence for
+the fix is the template comparison above, which is objective and re-runnable, and
+not a before/after screenshot of an error list.
+
+### Round 7 — the native engine lays out and draws a page
+
+Phase 1 stopped at a box tree on purpose; this round added the two things it left
+out, and the boundary between them is one interface:
+
+- **Text measurement** is a XAML operation, so Core declares `ITextMeasurer` and
+  the app answers it — the same split `IBrowserEngine` already uses for the engine
+  itself. `FixedAdvanceTextMeasurer` (0.5 em per character) exists so the numbers
+  layout produces are reproducible in `tools/proto/boxlayout.mjs`.
+- **Layout** is `BlockLayout` (blocks stack, widths fill, `max-width` caps) plus
+  `InlineLayout` (words into lines, breaking at whitespace, `text-align`).
+- **Drawing** is `XamlBoxRenderer`: one `Canvas`, a `TextBlock` per word, a
+  `Rectangle` per background and border, inside a `ScrollViewer`.
+- **Reachable** from Diagnostics → *Render current page natively*, which fetches
+  the current tab over the app's own TLS 1.3 transport. This is the first code
+  path in the product where a page is **rendered** by this repository's own engine
+  rather than by the WebView.
+
+What it does **not** do, stated here so it cannot be mistaken for a regression:
+no JavaScript, no `float`/`position`, no auto-margin centring, no margin
+collapsing, no images, no tables, no flexbox, no grid, and one border outline per
+box instead of four independently styled edges. The declared subset is a reader,
+not a browser.
+
+**The guest build taught group 12 a new hazard.** `FontStyles` (`System.Windows`)
+is WPF and does not exist in the WinRT profile at all: four `BC30451` errors, in
+code that this repository's own plan had written. XAML markup resolves
+`FontStyle="Italic"` through the enum; code has to name
+`Windows.UI.Text.FontStyle.Italic`. The hazard is now in `check-vb.mjs` group 12,
+with its negative control run — 4 findings with `FontStyles` restored, 0 without.
+That is the second time a checker group has been earned by a failed build rather
+than by a theory, and the reason group 12's entries are all paid for.
+
+**The round also earned a rule, at a price.** Task 1's commit (`c079267`) declared
+`BrowserForWP/Rendering/XamlTextMeasurer.vb` in the app project while that file
+still contained `FontStyles` at its lines 50 and 52 — so **it does not build**, and
+it was not the only such commit: the plan scheduled a Node prototype per task and
+the guest build only once, at the very end, so the red trees sat there until Task 4.
+A Node prototype cannot know a platform hazard, and a single build at the end
+cannot say which commit introduced one. From this round on:
+
+> **A task that adds a `.vb` file to a `.vbproj` ends with a rebuild, not merely a
+> prototype run.**
+
+It is in the loop in `.agents/skills/browserforwp/SKILL.md` too, because the plan
+that broke it was written by the process the loop describes.
+
+**Verified:** `node tools/proto/boxlayout.mjs` 19/19, `textmeasure.mjs` 10/10,
+`core-logic.mjs` 60 assertions, `check-vb.mjs` 0 finding(s), six configurations
+`BUILD_EXIT=0` with only the two deliberate `ResourceLoader` warnings.
+
+> **Superseded.** Both of those referees were deleted with the renderer they
+> measured, in Task 1 of the remote-render client plan — a green check standing
+> over a deleted implementation is worse than no check, because it reads as
+> coverage. The paragraph above is left as the record of what was verified when it
+> was written.
+**Not verified:** the on-device output. Nothing in this round has been drawn on a
+handset; the geometry is asserted off-device and the rendering is not asserted at
+all. Record the first real render's surprises here when someone runs it.
+
+### Round 9 — the sealed channel, and three checks that had to be earned
+
+The remote-render client (plan `docs/superpowers/plans/2026-09-29-remote-render-client.md`,
+Task 3) adds two files: `BrowserForWP.Net/Remote/SealedChannel.vb`, which seals a
+frame with AES-256-GCM under a key derived from the device token and the
+connection's salt, and `BrowserForWP/Engine/RemoteChannel.vb`, which joins the
+protocol to the TLS client.
+
+**A layer boundary moved the design, and the boundary was right.** The obvious
+home for the sealed channel was `Core`, next to `RemoteProtocol`. `Core` may not
+reference `Crypto` ([`ARCHITECTURE.md`](ARCHITECTURE.md)), and the sealed channel
+IS the layer that holds a key — so it went to `Net`, which references only
+`Crypto`. And `Net` may not reference `Core`, so it cannot build the 16-byte header
+that is also the AEAD's additional authenticated data. Rather than write the header
+twice — a second implementation of the one thing `protocol/vectors.json` exists to
+pin — `SealedChannel` takes it as a `Func(Of Byte, UInteger, UInteger, Byte())`
+delegate and refuses a null one. `RemoteChannel` lives in the app because the app is
+the only layer that may see both. `tools/proto/remote-protocol.mjs` grew from 53 to
+91 checks and asserts both halves; two of those checks went red the moment `next`
+was renamed (below), which is the referee reading the source rather than trusting it.
+
+**A VB keyword as a local variable, and eleven errors that all named the wrong
+thing.** `Dim next As UInteger = _outSequence + 1UI` — `Next` closes a `For`. vbc
+answered with `BC30201` on that line and then `BC30451 "'header' is not declared"`
+for each of the eleven following lines, every one of them naming something that
+plainly IS declared. Nothing in this repository could have caught it: `check-vb.mjs`
+had no group for name legality, and `tools/proto/remote-protocol.mjs` reads source
+text for structure, not for legal identifiers. That is the worst ratio this project
+has had between "one mistake" and "warnings that mislead".
+
+**Group 17 exists now, and its list is MEASURED.** The first version of the list
+was written from the language reference, and the reference is not the compiler:
+`Out` is in its reserved list and `Dim out(31) As Byte` compiles — it is on disk in
+`X25519.vb` and that project builds in all six configurations. So
+tools/keyword-probe compiles one `Dim <word> As Integer` per candidate and reads the
+answer: **117 candidates, 113 refused, 4 accepted** (`out`, `async`, `await`,
+`custom`). All four would have been false positives.
+
+**And the first probe run was wrong in the other direction.** One file, 117
+candidates: vbc reported one error per candidate up to line 146 and then stopped,
+with no message, because vbc 12 is pre-Roslyn and gives up after about a hundred
+errors. The last sixteen words came back "legal" because they had never been
+compiled. The probe is now three batches of under fifty declarations, each ending
+with a sentinel whose refusal proves the batch reached its end, and the wrapper
+prints that verdict rather than a count. A measurement whose failure mode is
+silence needs a witness, not a bigger sample.
+
+**Group 13 earned two more rules, both from the same defect, twice in one round.**
+A plain `'` comment stranded inside a `'''` doc block ends the block, so the
+closing tag that follows belongs to a second comment that never opened —
+`BC42301` plus `BC42304`, and the documentation is discarded. It appeared in
+`SealedChannel.vb` and then in `RemoteProtocol.vb`, written one round earlier. Then
+the fix for the second one introduced the same trap at one remove: prose that
+mentions a closing summary tag closes the element early, and the guest build said `BC42304` again. Group 13 previously looked only for `<` followed by a *digit* — one
+way to reach the warning, not the rule. It now balances the tags. It also reported
+`<paramref>` as an unknown tag, which the compiler accepts: the allow-list is
+checked against the compiler too.
+
+All three of those are warnings. A warning does not fail a build, and that is
+precisely the harm: three cheap findings that train a reader to skim the warning
+list, which is where the next real one will be. The one rule this round added to
+the table above is therefore about *warnings* as much as about keywords.
+
+**A namespace checker that could not see nesting.** `fileNamespaces` matched every
+`Namespace` line separately and prefixed the project's root namespace, so
+`Namespace Engine` / `Namespace Remote` produced `…Core.Engine` and `…Core.Remote`
+and never `…Core.Engine.Remote`. The compiler composes them. A correct
+`Imports BrowserForWP.Core.Engine.Remote` was therefore reported as matching no
+namespace in the solution — a false alarm on code that compiles, which is the one
+thing an import checker must never do. `RemoteProtocol.vb` had declared that
+namespace for a whole round and it stayed invisible until something imported it.
+
+**Task 4 — a primary, a secondary, and one defect that would have been silent.**
+`RemoteServers.vb` holds the rule the request asked for: two servers, the second
+tried only when the first cannot be reached, and no third — because "add your own
+server" means replacing the secondary. The first draft of `Normalize` asked
+whether a colon appeared before a scheme, and `render.example.com:8443` has one:
+the host read as scheme `render.example.com`, the port as its path, the scheme was
+neither `https` nor `http`, and the function returned empty. A server a person had
+just typed would **vanish from the settings screen with no message at all**, which
+is worse than a rejected field, because there is nothing to correct. The test is
+`scheme://`, and `Uri` is no longer trusted for the rest either: the authority must
+look like a host, because what `Uri` accepts can differ between profiles and this
+function's contract is "nonsense becomes not configured". Both cases are pinned in
+`core-logic.mjs`.
+
+**The referee earned its keep twice on the day it was written.** `19/19` on first
+run took two corrections: the private constructor that makes the class
+uninstantiable was missing, and `LooksLikeAHost` initially refused a colon, so
+`https://host:8443` — a port, which is the normal way to reach a local server —
+was rejected by the very check meant to allow it. A behaviour-only test would have
+missed the first and a source-only test the second.
+
+**Two referees had to be retired with the code they measured.**
+`tools/proto/textmeasure.mjs` and `tools/proto/boxlayout.mjs` were the referees for
+the on-device renderer, and Task 1 deleted that renderer. They were left in the
+docs for a round, which is the worst of both worlds: a green check standing over a
+deleted implementation reads as coverage. Deleted, with the commands and table rows
+that named them. The same sweep found `tools/proto/modern-sites.mjs` asserting
+`mainPage.includes('>= 8')` — the auto-reader threshold, which had been moved into
+`EngineChoice.AutomaticFallbackThreshold` precisely so the number would live in one
+place. It now asserts that shape, so the *fix* stops reading as a regression.
+
+**And the group count was never a count of groups.** `checksRun` was incremented
+inside loops over files, so `check-vb.mjs` reported 71, 72 and 73 groups across
+three rounds in which exactly one group was added — and this file quoted all three.
+The run list is an array now and the number is its length: **16 groups over 17
+numbered categories**. A count that moves for reasons the reader cannot see is
+worth less than no count, and it had been copied into two documents.
+
+**Verified:** `node tools/proto/remote-protocol.mjs` 91/91,
+`remote-servers.mjs` 19/19, `check-vb.mjs` 16
+groups / 0 finding(s), `core-logic.mjs` 66 assertions, `boxtree.mjs` 48/48,
+`engine-choice.mjs` 23/23, `gen-vectors.mjs` 53 assertions, `check-polyfill.mjs`
+ES5-valid, and `vm-build.cmd /t:Rebuild` on the guest with
+`=== Real compiler errors === none` and **only the two deliberate `BC40000`
+`ResourceLoader` warnings** — the doc-comment warnings are gone. The keyword probe
+self-checks all three batches.
+**Not verified:** the channel has never spoken to a live server. `SealedChannel`'s
+bytes are pinned by vectors and `RemoteChannel` is a socket, a loop and error
+handling, but the handshake has not run against the Node server, and nothing has
+been drawn on a handset.
+
+### Round 10 — the server draws, the phone holds the picture
+
+The remote engine stops being a skeleton. `RemoteEngine` walks
+`RemoteServers.Order`, connects over the app's own TLS 1.3 stack, decodes `FRAME`
+into tiles it draws on a `Canvas`, and turns a tap, a drag and a keystroke into
+`TAP`, `SCROLL` and `TEXT`. `RemoteChannel` gains `NavigateAsync`; the shell gains
+the four server fields (the plan specified a settings surface and then asked a
+person to paste a token into one) and a `MediaElement` for the server's `AUDIO`
+message.
+
+**The read loop's handler signature changed, and both changes are load-bearing.**
+It now receives the frame's SEQUENCE NUMBER and is AWAITED. Without the sequence,
+`ACK` cannot name a frame — and the server holds its screencast until an ACK for
+the frame in flight arrives (`src/session.js`, rule 4), so a client that could not
+acknowledge would receive exactly one frame per connection **and look perfectly
+healthy**. Without the await, drawing a frame (which decodes a JPEG) would be
+overtaken by the next message: two frames decoded at once, drawn in the wrong
+order, with the ACK for the older one arriving last. Neither defect is visible in
+a screenshot; both are visible in the protocol.
+
+**A close this client asked for is no longer reported as a failure.**
+`ReplaceChannel` retires the previous connection asynchronously, so its read loop
+reached its end *after* the new page had been reported, and the shell put an error
+over a working page on every second navigation. `Disconnect` now records that the
+close was requested, and the loop skips the callback for it.
+
+**Three defects, and none of them was caught by a checker.** Two came from the
+guest compiler: `RemoteServers` is declared in `BrowserForWP.Core.Remote` while the
+wire format is in `BrowserForWP.Core.Engine.Remote`, and both files share the
+folder `BrowserForWP.Core/Engine/Remote/`, so the import looked right and group 5
+accepted it — a folder is not a namespace (BC30451 and BC30002, twice). And
+`DisplayInformation.ResolutionScale` is *obsolete on Windows Phone*, which BC40019
+says in Italian while naming `RawPixelsPerViewPixel`; the deprecated call was the
+one that sizes the picture on the glass. The third came from reading the file this
+round edits: `OnNavigatedTo` applied the localized strings before choosing an
+engine, and `ApplyLocalizedStrings` reads `_engine.Capabilities` — **so the app
+crashed on start**, on a first launch, inside a handler with no `Try` around it. It
+had been that way since the engine became a choice. Every row of every
+hand-verification table in this file begins at the screen it never drew.
+
+**Verified:** six configurations `BUILD_EXIT=0` (four solution builds plus both
+`Any CPU` app-project builds) with only the two deliberate `BC40000`
+`ResourceLoader` warnings; `remote-protocol.mjs` 91/91; `remote-servers.mjs` 19/19;
+`core-logic.mjs` 66 assertions; `engine-choice.mjs` 23/23; `boxtree.mjs` 48/48;
+`check-vb.mjs` 16 groups over 17 categories, 0 finding(s).
+**Not verified:** everything that needs a handset or a server — see § "The remote
+engine, verified by hand", where every row is blank rather than marked as passing,
+and deferred items 15 and 16.
+
+### Round 11 — the keyboard, and the write that had to be serialised
+
+The input path, end to end: a tap focuses the hidden field (and therefore raises
+the soft keyboard), what the keyboard types crosses as `TEXT`, Enter and
+Backspace cross as `KEY`, the page redraws and the picture shows the text. Plus the
+keys a phone keyboard cannot send at all — Tab, Escape, Backspace and the four
+arrows — as a scrollable bar above the page, and a rotation that moves the
+server's viewport and this device's finger mapping together.
+
+**The half nobody can see: the writes were not serialised.** `RemoteEngine.Send`
+is fire-and-forget and `Tls13Client.WriteAsync` does not serialise its callers, so
+two messages could be in `SealedChannel.Seal` at once — reading the same sequence
+number and encrypting two records with the same nonce, which the server answers by
+closing the channel. Nothing had noticed because nothing typed: until this round,
+every message came from one place at a time, and typing is many small messages
+from two, the UI thread and the frame-acknowledging read loop.
+`RemoteChannel` now takes a `SemaphoreSlim` around **seal and write** in both send
+paths, and `tools/proto/remote-input.mjs` asserts it is there and inside a
+`Finally`.
+
+**Why tap-then-type is not a race, measured rather than assumed.** `src/server.js`
+chains the messages of a connection (`queue = queue.then(() => session.onFrame(frame))`)
+and `Session.onFrame` awaits `_dispatch`, so the `TAP` that focuses a field has
+finished before the `TEXT` that follows it is handled. On the client side the same
+order is what the gate above protects.
+
+**What this round does NOT do, and says so.** The protocol has no message meaning
+"focus moved", so the phone cannot know whether a tap landed on a text box: **the
+keyboard comes up on every tap**, including on a link. Mirroring the page's focused
+field needs a new message type in both repositories (deferred item 17). The `KEY`
+message's modifier byte is carried and ignored by the server, so Shift+Tab is not
+offered rather than offered and wrong (item 18).
+
+**Two defects, one from the compiler and one from the referee's own negative
+control.**
+
+- `Window.SizeChanged` takes its arguments from `Windows.UI.Core` and its event
+  from `Windows.UI.Xaml`; the first build of the handler said
+  `Windows.UI.Xaml.WindowSizeChangedEventArgs` and got BC30002 — a type name no
+  checker here reads.
+- The rotation check in `remote-input.mjs` was wrong twice before it was right: it
+demanded `_screen.SetViewport` inside the handler, when the design funnels both
+numbers through `ApplyViewport`, and its planted defect replaced the FIRST
+occurrence of a button name, so the name survived later in the file and the
+mutation planted nothing at all. The `--probe` run is what exposed it: **a
+mutation that does not fail its check is a check that cannot see what it is named
+after.**
+
+**Verified:** `remote-input.mjs` 7/7 with all 7 planted defects refused;
+`remote-protocol.mjs` 91/91; `remote-servers.mjs` 19/19; `engine-choice.mjs` 23/23;
+`core-logic.mjs` 66 assertions; `boxtree.mjs` 48/48; `check-vb.mjs` 16 groups over
+17 categories, 0 finding(s); six configurations `BUILD_EXIT=0` with only the two
+deliberate `BC40000` warnings.
+**Not verified:** the whole of it that needs a soft keyboard. That a tap raises
+the system keyboard, that a keystroke arrives after it, that the keys bar's buttons
+press what they say, and that a rotation keeps the keyboard up are all unrun — see
+the blank rows in § "The remote engine, verified by hand".
+
+### Round 12 — the solution an IDE can load, and the comment that broke a project
+
+**Reported:** opening `BrowserForWP.sln` in a tool that is not Visual Studio — a
+solution selector on macOS — lists `(0 projects)`, with every project beside it
+marked `(unavailable)`. The projects themselves were fine: six configurations
+`BUILD_EXIT=0`. Both differences from a loadable solution are in the *text* of the
+solution file.
+
+**The `.sln` names a project factory, and a name that is not registered is not a
+hint, it is an empty solution.** Round 6 put `{76F1466A-...}`, the Windows Phone
+8.1 *flavour*, in all seven `Project` lines, reading the registry and concluding
+the loader ignored the field. The registry shows which factories exist. What the
+loader *does* with an unregistered name was never measured until now, and the
+oracle is the IDE's own loader — `devenv.com` uses the project system, not MSBuild:
+
+```
+# .sln says {76F1466A-8B6D-4E39-A767-685A06062A39} in the seven Project lines
+Build: 0 succeeded or up-to-date, 0 failed, 0 skipped     <- no project loaded
+
+# .sln says {F184B08F-C81C-45F6-A57F-5ABD9991F28F}
+Build: 7 succeeded, 0 failed, 0 up-to-date, 0 skipped
+```
+
+One field apart, everything else identical. `MSBuild` reads neither the GUID nor
+the separator, which is why no round of guest builds could see the difference, and
+the lessons sit on opposite sides of the same file: the **`.vbproj` carries the
+flavour** (Round 6, still right), the **`.sln` carries the factory** (this round,
+and the reason is that VS2013 registers only `{F184B08F-...}` while resolving a
+solution entry through whatever factory it names).
+
+**Second defect, found while measuring the first.** With the solution loading,
+the IDE's project system took six of the seven projects and refused
+`BrowserForWP.Crypto` with
+
+```
+BrowserForWP.Crypto.vbproj : error  : The application for the project is not installed.
+```
+
+which carries no diagnostic code, so every build on this project stayed green while
+the project could not be opened — the same blind spot as Round 6, one layer down.
+It is not the name, the path or the surrounding solution. Bisected on the guest,
+each row one `devenv.com /build` run against a one-project solution:
+
+| Variant of `BrowserForWP.Crypto.vbproj` | Loads? |
+| --- | --- |
+| untouched | no |
+| byte-identical copy under another file name | no |
+| every XML comment removed | **yes** |
+| comment block N removed, for each N in turn | only N = 2 loads |
+| comments intact, the two mentions inside block 2 reworded | **yes** |
+| block 2 removed, one mention added to a leading comment | no |
+
+The last two rows are the finding. That file is the only project here whose
+comments named the flavour property, and the name is what the IDE keys on: **the
+Windows Phone project factory locates that property by scanning the project file
+as TEXT, not by parsing it as XML, so the first occurrence of the name is the one
+it reads.** In `BrowserForWP.Crypto.vbproj` the comment's mention came first, the
+real element second; the scan read the first, the flavour came back empty, and the
+project was refused. This is why the word cannot appear in prose here, and why it
+is written as "the flavour property" everywhere else.
+
+**Fixed:** all seven `Project` lines in `BrowserForWP.sln` moved to
+`{F184B08F-C81C-45F6-A57F-5ABD9991F28F}` and to `/` separators — a backslash is an
+ordinary character in a file name on any host that is not Windows, so the project
+could not be found even with the GUID right. The offending comment in
+`BrowserForWP.Crypto.vbproj` now says "the flavour property" and carries the reason,
+so nobody restores the name as a kindness.
+
+**Enforced** by group 14 of `tools/check-vb.mjs`, three rules in one group: the
+flavour GUID wherever `TargetPlatformIdentifier` is `WindowsPhoneApp`; a registered
+factory GUID and `/` separators in the `.sln`; and the flavour property's name
+nowhere ahead of its element, comments included. Negative controls run for the two
+new rules — reverting the `.sln` to the flavour GUID produces 8 findings, one added
+mention in a comment produces the third.
+
+**Verified:** `check-vb.mjs` 16 groups over 17 categories, 0 finding(s), with both
+negative controls red; all 20 referees in `tools/proto/` green (`remote-protocol`
+91/91, `remote-input` 7/7, `remote-servers` 19/19, `engine-choice` 23/23,
+`core-logic` 66 assertions, `boxtree` 48/48, `csscascade` 47/47, the rest unchanged);
+six configurations `BUILD_EXIT=0` carrying only the two deliberate `BC40000`
+warnings; and `devenv.com BrowserForWP.sln /build "Debug|ARM"` — the IDE loading
+and building every project — `Build: 7 succeeded, 0 failed`.
+**Not verified:** the selector the report came from. No Visual Studio, and no
+solution reader other than `devenv.com`, runs on this machine; what is measured is
+the project system those tools hand the file to, not the tool itself.
+
+**Noticed while measuring it:** `devenv` rewrites the projects it opens — BOM, CRLF
+line endings and a `<Folder Include="My Project\" />` item appear in whichever
+`.vbproj` files it touched, and on an earlier run they nearly went into a commit.
+Revert them (`git checkout -- <file>`), or a round that only meant to change the
+solution will also rewrite four project files.
 
 ## The loop
 
@@ -504,35 +1480,124 @@ Then update the skill if any tool, command, file layout or constraint changed.
 
 ## Where the tests actually are
 
-**There are no VB unit-test projects.** `2026-09-28-browserforwp.md` specified
-`tests/BrowserForWP.Crypto.Tests/` and `tests/BrowserForWP.Core.Tests/`, both
-**not created**, as MSTest projects with `<TestMethod>` cases. What exists is:
+Both VB test projects from `2026-09-28-browserforwp.md` now **exist and compile**:
+`tests/BrowserForWP.Core.Tests/` and `tests/BrowserForWP.Crypto.Tests/`, both
+registered in `BrowserForWP.sln` (Debug configurations only) and built by
+`tools/vm-build.cmd`. They are deliberately **not MSTest projects** — they hold a
+plain `Public Shared Function RunAll() As Integer` that throws on the first failed
+check, so they need no test framework the guest might not have.
+
+What is and is not covered:
 
 | Path | What it is | Consumed by |
 | --- | --- | --- |
 | `tools/gen-vectors.mjs`, `tools/proto/*.mjs` | The executable prototypes. `gen-vectors.mjs` recomputes HKDF, X25519 and AES-GCM and asserts RFC 5869 / 7748 / 8448 and NIST CAVS vectors; `tls13.mjs` completes real handshakes against live servers. | `node`, on any machine. **This is the real crypto verification.** |
-| `tests/BrowserForWP.Crypto.Tests/Vectors.generated.vb` | Generated VB constants from those same vectors. The project around it is **not created**; this file has no consumer. | — |
-| `tools/check-vb.mjs` | 12 categories of static check over every `.vb`, `.vbproj`, `.xaml` and `.resw`. | `node`, on any machine. |
-| `tools/vm-build.cmd` | The real compiler. | The Windows guest. |
+| `tests/BrowserForWP.Crypto.Tests/` (`Vectors.generated.vb` + `VectorsSmokeTests.vb`) | Generated VB constants from those same vectors, plus length/shape checks. | **Compiled by the guest build; never executed.** |
+| `tests/BrowserForWP.Core.Tests/CoreLogicTests.vb` | Address normalisation, tab state, session/UA, settings, history, favourites, pin normalisation, hostname wildcards, language matching. | **Compiled by the guest build; never executed.** |
+| `tools/proto/core-logic.mjs` | A transliteration of `CoreLogicTests.vb`. 66 assertions, exit 1 on failure. | `node`, on any machine. **This is what actually runs those assertions.** |
+| `tools/proto/remote-input.mjs` | The remote input path as source contracts: one hidden `TextBox` built once, the `SemaphoreSlim` gate over every write to the stream, the rotation that moves both viewports and sends `RESIZE`, the eight key names the keys bar offers, and that every label has a key in both `.resw` files. Seven checks, plus `--probe`, which plants each defect and requires its check to refuse it. | `node`, on any machine. |
+| `tools/proto/remote-protocol.mjs` | The render protocol's wire format: header, every encoder and decoder, the frame splitter, and the AEAD seal both ways, checked byte-for-byte against `protocol/vectors.json` — which the SERVER's own code produced. The only statement of the protocol that neither implementation wrote. 91 checks. | `node`, on any machine. |
+| `tools/proto/remote-servers.mjs` | `RemoteServers.vb`: url normalisation, the primary/secondary order, duplicate collapsing, and the source contract that Core holds resource keys and not prose. | `node`, on any machine. |
+| `tools/proto/engine-choice.mjs` | The `EngineChoice` decision table, plus the source contract around it: the constants by name, and the reasons as resource keys rather than sentences. | `node`, on any machine. |
+| `tools/check-vb.mjs` | 17 categories / 16 check groups over every `.vb`, `.vbproj`, `.xaml` and `.resw`, including every `{ThemeResource}` key, every project's flavour GUID and the factory GUID and separators of every `BrowserForWP.sln` entry, (group 13) doc-comment structure, (group 15) every privileged API name and every manifest capability that would ask the platform for something it cannot grant, (group 16) every API whose capability the manifest fails to declare, and (group 17) every declaration that names a VB keyword. | `node`, on any machine. |
+| `tools/keyword-probe/`, `tools/keyword-probe.cmd` | One `Dim <word> As Integer` per candidate, compiled by the real vbc, so group 17's list is measured rather than quoted. Batched, with a per-batch sentinel, because vbc 12 stops after about a hundred errors **with no message** and the first single-file version read that truncation as "legal". | `bash`, with the guest reachable. |
+| `tools/wp81-theme-keys.sh` | Regenerates `tools/wp81-theme-keys.txt`, the 523 theme-resource keys Windows Phone 8.1 defines, read from the guest's design dictionaries. | `bash`, with the guest reachable. |
+| `tools/vm-build.cmd` | The real compiler, and the arbiter of pass/fail. | The Windows guest. |
 | `tools/wmc9999-probe.sh` | Build-diagnostic characterisation and XAML output invariance. | `bash`, on the host. |
 
-**This is a real gap, not a documentation problem.** The crypto algorithms are
-covered better off-device than a VB test project would have covered them, because
-the prototypes exercise the *same algorithm* against published vectors and live
-servers — but `BrowserForWP.Core` (address normalisation, history, tab state) and
-the UI have **no automated tests at all**, and the plan's TDD steps for them were
-never honoured. Adding a WP8.1 Unit Test Library and running it in the guest is
-recorded as follow-up work, not attempted here.
+**"Compiled" is still not "tested", and the distinction is not academic.**
+`CoreLogicTests.vb` shipped an assertion naming the heavy `duckduckgo.com` search
+URL that the lite-first default had replaced. It compiled cleanly, so nothing
+complained; only running it would have. A WP8.1 ARM class library cannot run on
+the desktop and there is no handset or emulator, which is exactly why
+`tools/proto/core-logic.mjs` exists: it is the executable half of that suite.
 
-Until that exists, do not claim test coverage for `BrowserForWP.Core`. Verify it
-by building and by hand on a handset, and say so.
+**Keep the two in step.** If `CoreLogicTests.vb` gains a case, `core-logic.mjs`
+must gain it too, and vice versa. A mirror that drifts is worse than no mirror,
+because it reports green for behaviour the VB no longer has.
+
+Crypto is the one layer covered better off-device than a VB project could cover
+it, because the prototypes exercise the *same algorithm* against published RFC
+vectors and live servers. Do not claim UI or XAML coverage: neither exists.
+
+## The remote engine, verified by hand
+
+The remote engine has no end-to-end test here, and cannot have one: it needs a live
+server and a handset, and this development host is an Apple silicon Mac with no
+phone, no emulator and no Docker. The table below **is** the verification for that
+task, and it is **empty on purpose**. A row that was not run stays blank; filling
+one in from reading the code would make this table worth less than not having it.
+
+Ran it: 2026-09-29. Device: none available. Server: none reachable.
+
+| Step | Expected | Result |
+| --- | --- | --- |
+| Choose "Server" in Settings with no url set | The engine says it is not configured, and nothing is sent anywhere. | |
+| Set a url but no token | The primary is tried, then the secondary, then the engine reports the servers unreachable. | |
+| Paste the token from `bfwp-device add` | The page appears. | |
+| Type a url in the address bar | The page is drawn by the server. | |
+| Tap a link | The navigation happens on the server and a new frame arrives. | |
+| Scroll | The scroll happens server-side; the frame follows. | |
+| Type in a form field | The keystrokes cross, the text appears in the frame. | |
+| Press the phone's back button | The shell's back goes to the previous page. | |
+| Stop the server, then navigate | The secondary is used, and the status line says so. | |
+| Play a page with sound | Sound, if `WITH_AUDIO=1` and PulseAudio are running. | |
+| Turn the phone while a field has focus | The keyboard stays up, the picture fills the new shape, and a tap still lands where the finger is. | |
+| Press Tab in the keys bar | The next field on the page takes focus, and the frame shows it. | |
+
+**What this round does verify**, and with what:
+
+| Claim | Evidence |
+| --- | --- |
+| The input path holds its contracts (one field, gated writes, rotation, key names) | `node tools/proto/remote-input.mjs` → `7/7`, and `--probe` refuses all 7 planted defects |
+| The wire format reproduces the server's own bytes | `node tools/proto/remote-protocol.mjs` → `91/91 checks passed` |
+| The primary/secondary rule and url normalisation hold | `node tools/proto/remote-servers.mjs` → `19/19`; `node tools/proto/core-logic.mjs` → `66 assertions, 0 failure(s)` |
+| The engine decision table is unchanged | `node tools/proto/engine-choice.mjs` → `23/23` |
+| No mechanical defect of the seventeen checked kinds | `node tools/check-vb.mjs` → `16 check groups run, 0 finding(s)` |
+| It compiles, for real, on the phone's toolchain | Six configurations, `BUILD_EXIT=0`: Debug/ARM, Debug/x86, Release/ARM, Release/x86 as solution builds, and Debug/Release as `Any CPU` app-project builds. Only the two deliberate `BC40000` warnings. |
+
+**Three defects this round found**, two by the compiler and one by reading the
+file being edited. All three had passed every checker in the repository.
+
+*Found by the guest build:*
+
+- `RemoteServers` and `RemoteServerSettings` are declared in
+  `BrowserForWP.Core.**Remote**`, while the wire format is in
+  `BrowserForWP.Core.Engine.**Remote**`. Both files sit in the same folder,
+  `BrowserForWP.Core/Engine/Remote/`, so `Imports BrowserForWP.Core.Engine.Remote`
+  looked right and `tools/check-vb.mjs` group 5 accepted it — that namespace does
+  exist, it is simply not the one the type is in. BC30451 plus BC30002, twice.
+- `DisplayInformation.ResolutionScale` is **obsolete on Windows Phone** and
+  "can return incorrect results"; the phone's own compiler says so, in Italian, in
+  `BC40019`, and names the replacement (`RawPixelsPerViewPixel`). It is a
+  deprecation warning about the exact value that sizes the picture on the glass,
+  and it arrived as a warning in an otherwise green build.
+
+*Found by reading `MainPage.xaml.vb`, and it is the worst of the three:*
+
+- `OnNavigatedTo` applied the localized strings BEFORE it chose an engine, and
+  `ApplyLocalizedStrings` reads `_engine.Capabilities`. On a first launch
+  `_engine` is `Nothing`, so the shell dereferenced it and threw inside
+  `OnNavigatedTo`, where nothing catches: **the app crashed on start.** It has
+  been that way since the engine became a choice, and every table in this file
+  that says "not run on a handset" is why nobody noticed. No compiler rejects it
+  and no checker here could see it. The fix is the order of two adjacent lines,
+  with the reason written where the lines are.
+
+**Not verified, and not claimed:** everything that needs a handset or a server.
+That includes the whole of `Rendering/RemoteScreen.vb` — the tile decode, the
+1/dpr scale, tap and scroll mapping, and the hidden `TextBox` that owns the soft
+keyboard — and the audio path, whose server half does not exist yet either (the
+capture end needs a sound card; see the notes in `Docker-BrowserForWP`).
 
 ## Release checklist
 
-- [ ] `node tools/gen-vectors.mjs` → `52 assertions, 0 failure(s)`
+- [ ] `node tools/gen-vectors.mjs` → `53 assertions, 0 failure(s)`
 - [ ] `python3 tools/make_logo.py` → 12 PNGs, all `*.scale-100` / `*.scale-240`, no git diff
 - [ ] Polyfill ES5 check passes
-- [ ] `tools\vm-build.cmd /t:Rebuild` in the guest → `BUILD_EXIT=0`, no `BC` errors
+- [ ] `node tools/proto/core-logic.mjs` → `core-logic checks, 0 failure(s)`
+- [ ] `tools\vm-build.cmd /t:Rebuild` in the guest → `BUILD_EXIT=0`, no `BC`
+      errors, no warnings
 - [ ] `node tools/proto/w25519.mjs` → `18 checks, 0 failure(s)`
 - [ ] `node tools/proto/tls13.mjs example.com` → `31 checks, 0 failure(s)`
 - [ ] `RUNS=4 bash tools/wmc9999-probe.sh` → `distinct XBF hash pairs across 12 runs: 1`

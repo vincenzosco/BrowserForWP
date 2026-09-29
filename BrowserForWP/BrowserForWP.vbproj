@@ -93,6 +93,11 @@
     <Compile Include="App.xaml.vb">
       <DependentUpon>App.xaml</DependentUpon>
     </Compile>
+    <Compile Include="Diagnostics\TlsProbeRunner.vb" />
+    <Compile Include="Diagnostics\NetDocumentFetcher.vb" />
+    <Compile Include="Engine\RemoteChannel.vb" />
+    <Compile Include="Engine\RemoteEngine.vb" />
+    <Compile Include="Rendering\RemoteScreen.vb" />
     <Compile Include="MainPage.xaml.vb">
       <DependentUpon>MainPage.xaml</DependentUpon>
     </Compile>
@@ -146,6 +151,10 @@
          BrowserForWP.Localization/Localizer.vb for the resolution order. -->
     <PRIResource Include="Strings\en-US\Resources.resw" />
     <PRIResource Include="Strings\it-IT\Resources.resw" />
+    <PRIResource Include="Strings\de-DE\Resources.resw" />
+    <PRIResource Include="Strings\fr-FR\Resources.resw" />
+    <PRIResource Include="Strings\es-ES\Resources.resw" />
+    <PRIResource Include="Strings\ja-JP\Resources.resw" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\BrowserForWP.Core\BrowserForWP.Core.vbproj">

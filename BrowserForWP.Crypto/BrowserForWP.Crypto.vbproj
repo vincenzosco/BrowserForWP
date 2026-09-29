@@ -25,14 +25,48 @@
     <AssemblyName>BrowserForWP.Crypto</AssemblyName>
     <DefaultLanguage>en-US</DefaultLanguage>
     <TargetPlatformVersion>8.1</TargetPlatformVersion>
-    <!-- Without this the project's target platform is unspecified, and a
-         Windows Phone 8.1 application cannot resolve it as a reference: the
-         build reports "The referenced component could not be found" and every
-         type it defines is then "not defined" in the referencing project. -->
+    <!-- Kept as a statement of intent. The conditional PropertyGroup at the foot
+         of this file sets the same value when nothing else has, so this line
+         changes no build. It is NOT what makes this project resolvable as a
+         reference, and an earlier revision of this comment said it was: the
+         component that decides that is the project system in the IDE, and it
+         reads the flavour property below, not this one.
+
+         THE PROPERTY BELOW IS DELIBERATELY NOT NAMED HERE. Naming it in a
+         comment breaks the project, and not in a way any build can see: the
+         IDE's Windows Phone project factory locates that property by scanning
+         this file as TEXT, not by parsing it as XML, so the first occurrence of
+         the name is the one that counts. An occurrence inside a comment, ahead
+         of the real element, makes the flavour come back empty, and the IDE
+         answers by refusing the whole project with
+         "The application for the project is not installed." It carries no
+         diagnostic code, it comes from a component MSBuild never runs, and
+         every configuration here stays green. Measured on the guest: this file
+         with only those two words taken out of this comment loads and builds,
+         and an otherwise untouched file with one added mention in a leading
+         comment stops loading. tools/check-vb.mjs group 14 enforces it. -->
     <TargetPlatformIdentifier>WindowsPhoneApp</TargetPlatformIdentifier>
     <MinimumVisualStudioVersion>12</MinimumVisualStudioVersion>
     <FileAlignment>512</FileAlignment>
-    <ProjectTypeGuids>{BC8A1FFA-BEE3-4634-8014-F334798102B3};{F184B08F-C81C-45F6-A57F-5ABD9991F28F}</ProjectTypeGuids>
+    <!-- The Windows Phone 8.1 class library flavour, the first GUID VS2013 writes
+         from
+           ProjectTemplates\VisualBasic\Windows Phone 8.1\1033\
+           WindowsPhoneClassLibrary\ClassLibrary.vbproj
+         under the Visual Studio install, and the value a Windows Phone 8.1 app
+         template writes for itself. Both must match for the IDE to accept the
+         reference.
+
+         {BC8A1FFA-BEE3-4634-8014-F334798102B3} is the WINDOWS STORE library
+         flavour, taken from
+           ProjectTemplates\VisualBasic\Windows Store\1033\
+           ClassLibrary_WindowsStoreApps\ClassLibrary.vbproj
+         These files carried it while declaring TargetPlatformIdentifier
+         WindowsPhoneApp, which is why the IDE reported "The referenced component
+         'BrowserForWP.Crypto' could not be found" for a project that was present,
+         correct and already built. MSBuild compares neither GUID and the guest
+         build stayed green throughout. Enforced by group 14 of
+         tools/check-vb.mjs. -->
+    <ProjectTypeGuids>{76F1466A-8B6D-4E39-A767-685A06062A39};{F184B08F-C81C-45F6-A57F-5ABD9991F28F}</ProjectTypeGuids>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>

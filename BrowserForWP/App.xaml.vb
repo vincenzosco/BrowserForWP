@@ -31,8 +31,18 @@ NotInheritable Class App
 
         ' Resolve the UI language from the phone's display-language list before any
         ' page exists, so the first frame is already localized instead of flashing
-        ' English and then switching to Italian.
+        ' English and then switching to Italian. A persisted per-app override wins.
         Localization.Localizer.Initialize()
+        Try
+            Dim savedLang As Object = Nothing
+            If Windows.Storage.ApplicationData.Current.LocalSettings.Values.TryGetValue("languageOverride", savedLang) Then
+                Dim langText As String = TryCast(savedLang, String)
+                If Not String.IsNullOrEmpty(langText) Then
+                    Localization.Localizer.Override(langText)
+                End If
+            End If
+        Catch ex As Exception
+        End Try
 
         Dim rootFrame As Frame = TryCast(Window.Current.Content, Frame)
 

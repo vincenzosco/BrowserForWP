@@ -607,6 +607,13 @@ function vbBytes(name, hex, indent = '        ') {
   for (let i = 0; i < bytes.length; i++) {
     parts.push('&H' + bytes[i].toString(16).toUpperCase().padStart(2, '0'));
   }
+  if (parts.length === 0) {
+    // RFC 5869 case 3 uses an EMPTY salt and an EMPTY info. Without this branch
+    // the multi-line path below emitted `New Byte() { _` with no closing brace,
+    // which is not valid VB: the unterminated initializer swallowed the next
+    // declarations and the test project failed with BC30201.
+    return `    Public ReadOnly ${name} As Byte() = New Byte() {}\n`;
+  }
   const lines = [];
   for (let i = 0; i < parts.length; i += 12) {
     lines.push(indent + parts.slice(i, i + 12).join(', '));
@@ -636,9 +643,15 @@ vb += `\n`;
 vb += `Namespace CryptoTests\n`;
 vb += `\n`;
 vb += `    ''' <summary>Verified known-answer vectors shared by the crypto tests.</summary>\n`;
+vb += `    ''' <remarks>\n`;
+vb += `    ''' The values are INSTANCE fields, so the smoke tests in this same assembly\n`;
+vb += `    ''' must be able to construct the class. A Private constructor made every\n`;
+vb += `    ''' \`New Vectors()\` unbuildable, which nobody noticed while the file had no\n`;
+vb += `    ''' consumer. Friend keeps it out of every other assembly.\n`;
+vb += `    ''' </remarks>\n`;
 vb += `    Friend NotInheritable Class Vectors\n`;
 vb += `\n`;
-vb += `        Private Sub New()\n`;
+vb += `        Friend Sub New()\n`;
 vb += `        End Sub\n`;
 vb += `\n`;
 
@@ -711,6 +724,25 @@ for (const [key, name] of Object.entries(transcriptNames)) {
 vb += `\n`;
 
 vb += `    End Class\n\nEnd Namespace\n`;
+
+// The generated VB is compiled by tests/BrowserForWP.Crypto.Tests, so it has to
+// be syntactically complete -- and until this assertion existed, nothing checked
+// that. An EMPTY vector produced an unterminated `{ _` initializer and the
+// project failed with BC30201. Brace balance catches exactly that shape, so a
+// future empty vector cannot ship broken VB again.
+checks += 1;
+const openBraces = (vb.match(/\{/g) || []).length;
+const closeBraces = (vb.match(/\}/g) || []).length;
+if (openBraces !== closeBraces) {
+  failures += 1;
+  console.error(`  ✗ emitted VB has unbalanced braces: ${openBraces} '{' vs ${closeBraces} '}'`);
+} else {
+  console.log(`  ✓ emitted VB braces balanced (${openBraces} array initializer(s))`);
+}
+if (failures > 0) {
+  console.error(`\n✗ ${failures} problem(s) in the emitted VB. The file was NOT written.`);
+  process.exit(1);
+}
 
 const vbPath = path.join(ROOT, 'tests', 'BrowserForWP.Crypto.Tests', 'Vectors.generated.vb');
 fs.mkdirSync(path.dirname(vbPath), { recursive: true });

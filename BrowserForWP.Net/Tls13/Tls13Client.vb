@@ -45,6 +45,8 @@ Namespace Tls13
         Public Property CertificateChainStatus As String
         Public Property MatchedName As String
         Public Property Resumed As Boolean
+        ''' <summary>Leaf certificate DER, for pin computation. May be Nothing.</summary>
+        Public Property LeafCertificateDer As Byte()
     End Class
 
     Public NotInheritable Class Tls13Client
@@ -269,7 +271,8 @@ Namespace Tls13
                 .CertificateValid = certificateResult.IsValid,
                 .CertificateChainStatus = certificateResult.ChainStatus,
                 .MatchedName = certificateResult.MatchedName,
-                .Resumed = False}
+                .Resumed = False,
+                .LeafCertificateDer = chain(0)}
             IsConnected = True
         End Function
 

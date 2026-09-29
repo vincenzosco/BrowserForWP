@@ -57,3 +57,15 @@ __pycache__/
 # Generated build artifacts we DO want to keep are committed explicitly;
 # everything below is generated on demand:
 #   tools/gen-vectors.mjs  -> tools/out/*.json  (tracked, see docs)
+
+# Agent tooling. The skills themselves ARE committed under .agents/skills/,
+# with skills-lock.json pinning source and hash so `npx skills experimental_install`
+# can restore them. What is not source: .claude/skills/, a directory of relative
+# symlinks into .agents/skills/ that `npx skills add` regenerates per agent.
+.claude/
+
+# Scratch workspace for plan execution (subagent-driven-development /
+# executing-plans): per-plan ledgers, task briefs, review packages. Its own
+# .gitignore also covers it; this line means a fresh clone without that file
+# still ignores it.
+.superpowers/

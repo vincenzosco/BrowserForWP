@@ -20,9 +20,18 @@ Namespace Diagnostics
 
         Public Property MissingFeatures As New List(Of String)()
 
+        ''' <summary>
+        ''' True only when the probe actually ran and returned an answer. An empty
+        ''' feature list from a probe that never ran is not evidence of anything,
+        ''' and conflating the two made the UI claim "no missing web features" for
+        ''' a document it had not measured -- including on an engine with no
+        ''' scripting host at all.
+        ''' </summary>
+        Public Property CouldRun As Boolean = False
+
         Public ReadOnly Property IsFullyCompatible As Boolean
             Get
-                Return MissingFeatures.Count = 0
+                Return CouldRun AndAlso MissingFeatures.Count = 0
             End Get
         End Property
     End Class
@@ -80,6 +89,10 @@ Namespace Diagnostics
             If String.IsNullOrEmpty(raw) Then Return report
             raw = raw.Trim()
             If raw.Length < 2 Then Return report
+
+            ' From here the engine answered, so the verdict is meaningful even if
+            ' the answer lists gaps.
+            report.CouldRun = True
 
             ' The engine returns a JSON array literal; parse the quoted elements
             ' directly. A JSON parser dependency would be overkill for this shape.

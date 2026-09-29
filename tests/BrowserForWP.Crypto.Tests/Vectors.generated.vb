@@ -12,9 +12,15 @@
 Namespace CryptoTests
 
     ''' <summary>Verified known-answer vectors shared by the crypto tests.</summary>
+    ''' <remarks>
+    ''' The values are INSTANCE fields, so the smoke tests in this same assembly
+    ''' must be able to construct the class. A Private constructor made every
+    ''' `New Vectors()` unbuildable, which nobody noticed while the file had no
+    ''' consumer. Friend keeps it out of every other assembly.
+    ''' </remarks>
     Friend NotInheritable Class Vectors
 
-        Private Sub New()
+        Friend Sub New()
         End Sub
 
     Public ReadOnly HkdfCase1Ikm As Byte() = New Byte() { _
@@ -76,8 +82,8 @@ Namespace CryptoTests
     Public ReadOnly HkdfCase3Ikm As Byte() = New Byte() { _
         &H0B, &H0B, &H0B, &H0B, &H0B, &H0B, &H0B, &H0B, &H0B, &H0B, &H0B, &H0B, _
         &H0B, &H0B, &H0B, &H0B, &H0B, &H0B, &H0B, &H0B, &H0B, &H0B}
-    Public ReadOnly HkdfCase3Salt As Byte() = New Byte() { _
-    Public ReadOnly HkdfCase3Info As Byte() = New Byte() { _
+    Public ReadOnly HkdfCase3Salt As Byte() = New Byte() {}
+    Public ReadOnly HkdfCase3Info As Byte() = New Byte() {}
     Public ReadOnly HkdfCase3Prk As Byte() = New Byte() { _
         &H19, &HEF, &H24, &HA3, &H2C, &H71, &H7B, &H16, &H7F, &H33, &HA9, &H1D, _
         &H6F, &H64, &H8B, &HDF, &H96, &H59, &H67, &H76, &HAF, &HDB, &H63, &H77, _

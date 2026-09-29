@@ -18,12 +18,16 @@
     <AssemblyName>BrowserForWP.Core</AssemblyName>
     <DefaultLanguage>en-US</DefaultLanguage>
     <TargetPlatformVersion>8.1</TargetPlatformVersion>
-    <!-- See BrowserForWP.Crypto.vbproj: without an explicit target platform this
-         library is not resolvable as a reference from a Windows Phone 8.1 app. -->
+    <!-- See BrowserForWP.Crypto.vbproj for why this line is kept even though the
+         conditional PropertyGroup at the foot of this file sets the same value,
+         and for why it is not what makes the project resolvable as a reference. -->
     <TargetPlatformIdentifier>WindowsPhoneApp</TargetPlatformIdentifier>
     <MinimumVisualStudioVersion>12</MinimumVisualStudioVersion>
     <FileAlignment>512</FileAlignment>
-    <ProjectTypeGuids>{BC8A1FFA-BEE3-4634-8014-F334798102B3};{F184B08F-C81C-45F6-A57F-5ABD9991F28F}</ProjectTypeGuids>
+    <!-- See the same note in BrowserForWP.Crypto.vbproj: this must be the Windows
+         Phone 8.1 flavour, not the Windows Store one, or the IDE cannot resolve
+         this project as a reference from the app. -->
+    <ProjectTypeGuids>{76F1466A-8B6D-4E39-A767-685A06062A39};{F184B08F-C81C-45F6-A57F-5ABD9991F28F}</ProjectTypeGuids>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
@@ -94,9 +98,36 @@
   <ItemGroup>
     <Compile Include="Browser\AddressNormalizer.vb" />
     <Compile Include="Browser\BrowserSession.vb" />
+    <Compile Include="Browser\LiteRedirects.vb" />
+    <Compile Include="Browser\NightMode.vb" />
+    <Compile Include="Browser\ReadingMode.vb" />
+    <Compile Include="Browser\TrackerBlocklist.vb" />
+    <Compile Include="Browser\UserAgents.vb" />
     <Compile Include="Diagnostics\CompatibilityProbe.vb" />
+    <Compile Include="Diagnostics\DocumentDumper.vb" />
+    <Compile Include="Diagnostics\IeModeProbe.vb" />
+    <Compile Include="Diagnostics\TlsProbeCore.vb" />
     <Compile Include="Engine\IBrowserEngine.vb" />
+    <Compile Include="Engine\EngineChoice.vb" />
     <Compile Include="Engine\TridentEngine.vb" />
+    <Compile Include="Engine\Native\IDocumentFetcher.vb" />
+    <Compile Include="Engine\Native\NodeTypes.vb" />
+    <Compile Include="Engine\Native\HtmlTokenizer.vb" />
+    <Compile Include="Engine\Native\HtmlTreeBuilder.vb" />
+    <Compile Include="Engine\Native\CssParser.vb" />
+    <Compile Include="Engine\Native\SelectorMatcher.vb" />
+    <Compile Include="Engine\Native\UserAgentStylesheet.vb" />
+    <Compile Include="Engine\Native\StyleResolver.vb" />
+    <Compile Include="Engine\Native\BoxTreeBuilder.vb" />
+    <Compile Include="Engine\Remote\RemoteProtocol.vb" />
+    <Compile Include="Engine\Remote\RemoteServers.vb" />
+    <Compile Include="Storage\AppSettings.vb" />
+    <Compile Include="Storage\BackupManager.vb" />
+    <Compile Include="Storage\FavoritesStore.vb" />
+    <Compile Include="Storage\HistoryStore.vb" />
+    <Compile Include="Storage\SavedPages.vb" />
+    <Compile Include="Storage\SiteSettings.vb" />
+    <Compile Include="Storage\SpeedDial.vb" />
   </ItemGroup>
   <ItemGroup>
     <Import Include="Microsoft.VisualBasic" />

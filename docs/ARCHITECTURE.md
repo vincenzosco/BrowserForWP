@@ -1,10 +1,16 @@
 # BrowserForWP — Architecture
 
-## The three platform laws
+## The five platform laws
 
-Every design decision in this repository follows from three facts about
+Every design decision in this repository follows from five facts about
 Windows Phone 8.1. Each was verified, not assumed. If you are about to write
 code that contradicts one of them, stop — the platform will not honour it.
+
+Law 4 was added on 2026-09-28, after Law 1 was reached a third time by a
+different route ("escape the sandbox when a request arrives"). Law 5 was added on
+2026-09-29, when the on-device renderer was deleted and an optional remote engine
+replaced it. Plans written before those dates say "the three platform laws" and
+are dated records, not errors.
 
 ### Law 1 — The rendering engine is Trident (IE11) and cannot be replaced
 
@@ -22,6 +28,19 @@ exists for WinRT-ARM 8.1:
 **Consequence:** web *rendering* is capped at IE11. This is why
 `IBrowserEngine` exists — it makes the cap a configuration detail instead of an
 assumption baked into every call site.
+
+**That claim is true of behaviour, and the cap has a way around it that is not an
+escape.** There are two implementations of the seam: the system `WebView`, and
+`BrowserForWP/Engine/RemoteEngine.vb`, which draws the page with Chromium on a
+server somebody has to run — Law 5 is about what that costs. Between Round 8 and
+Round 10 there was a third, this repository's own on-device renderer, and it was
+deleted on purpose rather than because it did not work. What the shell *does*
+still branches only on `EngineCapabilities` — including whether the engine has a
+script host at all — but `MainPage` wires each engine's own events, so it knows
+the types at exactly one site. Putting the lifecycle on the interface would remove
+that, and it is deferred rather than done (`docs/MAINTAINING.md`, deferred item 11)
+so that the sentence above is not left standing on a claim the code no longer
+earns.
 
 ### Law 2 — The OS offers TLS 1.2 at most
 
@@ -44,6 +63,83 @@ loopback and point the `WebView` at it — **does not work here**. That design w
 evaluated and rejected. Anyone proposing "let's just proxy it locally" is
 proposing something the OS will refuse.
 
+### Law 4 — An app cannot leave its AppContainer
+
+The sandbox is not a wall an application climbs at runtime. It is the identity of
+the process, fixed by whoever created it, and no version of Windows offers an
+operation called "leave the sandbox". So the shape *"the app starts sandboxed
+and steps outside when a request arrives"* is not a technique this platform
+blocks — it is a technique that does not exist anywhere.
+
+| Lever such a plan needs | Why it is absent |
+| --- | --- |
+| Stop being an AppContainer process | **No self-de-sandboxing API.** Container membership lives in the process token and is set by the parent at creation; nothing in WinRT changes it, and WP8.1's profile exposes no process creation at all. There is no JIT to unlock either: an AppContainer denies writable+executable pages, and the `NETFX_CORE` profile has no `Reflection.Emit`. |
+| Hand the work to a free helper process | **A child of an AppContainer process is created in the same container.** A helper that is not in the container has to be launched by a full-trust parent, which the app is not. |
+| Declare the privilege in the manifest | **Capabilities grant resources, never memory policy.** Privilege is declared at *package* time in `Package.appxmanifest`, reviewed at publish. There is no 8.1 capability meaning "may create executable pages"; this package declares `internetClientServer` and nothing else. |
+| Ask a full-trust service to do it | **Broker contracts exist to perform specified operations.** An `AppServiceConnection` does a defined job for an app; it does not hand over a DOM, a renderer or memory. Microsoft defines the operations, so an engine cannot be requested. |
+
+**This is also why an SDK update could not have delivered it.** The SDK decides
+what you compile against; the kernel and the AppContainer process policy decide
+what the process may do. A patched SDK can give you an API that links and dies at
+runtime, and the device's firmware is not ours to change.
+
+Where a third-party engine *is* obtainable, it is obtainable as a
+**deployment-time decision, not a request-time escape**:
+
+| Route to a third-party engine | Windows Phone 8.1 | Windows 10 desktop | Windows 10 Mobile |
+| --- | --- | --- | --- |
+| Leave the sandbox when a request arrives | Does not exist | Does not exist | Does not exist |
+| Ask a full-trust broker for it | No such broker | Platform-defined operations only | No such broker |
+| Be full-trust from the start | No: no EXE deployment on a phone | **Yes** — desktop bridge / `runFullTrust`; shipping CEF or WebView2 is routine | No |
+| Ship the platform's engine | Trident, in `WebView` | EdgeHTML, then WebView2 (Chromium) | EdgeHTML |
+
+**Consequence:** there is no way to make THIS DEVICE draw a page with an engine
+other than Trident. A tokenizer, cascade, layout and painter in managed code was
+built here (Round 7) precisely to test that, and it was deleted in Round 10: it
+was a smaller thing than a browser, and a page that needs a modern engine is
+better served by a machine that has one — which is Law 5, and which is not an
+escape either, because the page is drawn somewhere else rather than the process
+leaving. On Windows 10 *desktop* a modern engine is a different project on a
+different OS, reached not by escaping anything but by targeting the platform
+where third-party engines were never sandboxed. Plainly: *"we could have
+Chromium"* is a statement about the operating system, not about a capability to
+request.
+
+### Law 5 — A remote renderer is a different browser, not a bigger one
+
+The remote engine does not lift the platform's ceiling. It moves the ceiling to
+somebody else's machine, and it changes what the browser IS:
+
+- The operator of the server can read every page, including passwords. This is
+  not a flaw; it is the architecture, and it is why the engine is off until a
+  person turns it on and configures a server.
+- The device holds no page. No script runs locally, so Find, Reading mode and
+  night mode are Trident features and are disabled on this engine rather than
+  pretending to work.
+- **The input path is split down the middle, and which half is whose matters.**
+  The keyboard is the phone's: a 1x1 transparent `TextBox` owns the soft keyboard
+  and empties itself into `TEXT` and `KEY` messages. The field is the server's:
+  the phone cannot see a caret, cannot prefill, and cannot know whether a tap
+  landed on an input at all, so the keyboard comes up on every tap and the keys a
+  soft keyboard has no way to send (Tab, Escape, the arrows) are a bar in the
+  shell. Nothing here mirrors the page's field, and nothing pretends to.
+- The network becomes load-bearing in a way it was not: a page is only as fast as
+  the link, and a dropped connection loses the page.
+- On-device rendering is NOT deleted because it is worse. It is deleted because
+  it is a smaller thing than a browser, and maintaining two renderers to prove
+  that was the wrong trade.
+
+**What this does not change.** Law 1 still holds for the pages this device draws
+itself. The two engines share the seam, the tab model, the history store and the
+address bar — `IBrowserEngine` was built for exactly this, and adding this engine
+changed none of them. What it did *not* keep identical is the shell's own wiring:
+`MainPage` subscribes to each engine's events itself (`NavigationStarting` on the
+`WebView`, `Navigated` and `Audio` on this one), and it disables the three
+Trident-only buttons when the engine is remote. That is deferred item 11, unchanged
+by this round. The engine is a settings choice, and
+`docs/MAINTAINING.md` records the hand-verification table for it — which is empty,
+because no handset and no server were available to the person who wrote it.
+
 ## What that means for "modern"
 
 The honest summary: **modern transport, modern compatibility layer, unchanged
@@ -53,7 +149,7 @@ renderer.**
 | --- | --- |
 | Transport (the wire) | **Modern.** TLS 1.3, X25519, ChaCha20-Poly1305, DNS-over-HTTPS, all on-device. |
 | Compatibility (what pages can run) | **Improved.** An injected ES5 shim raises the floor for modern pages. |
-| Rendering (how it looks) | **Capped at IE11.** Not addressable on this OS. |
+| Rendering (how it looks) | **Capped at IE11 locally.** A remote Chromium is not addressed by escaping anything, and it is not free: see Law 5. |
 
 The compatibility probe (`BrowserForWP.Core/Diagnostics`) exists so that the
 remaining gap is *reported*, not mysterious.

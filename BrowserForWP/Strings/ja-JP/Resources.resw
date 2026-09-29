@@ -1,0 +1,424 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+
+  <!-- Application -->
+  <data name="AppName" xml:space="preserve">
+    <value>BrowserForWP</value>
+  </data>
+
+  <!-- Address bar -->
+  <data name="AddressPlaceholder" xml:space="preserve">
+    <value>検索またはアドレスを入力</value>
+    <comment>Placeholder text shown in the address bar while empty.</comment>
+  </data>
+  <data name="Go" xml:space="preserve">
+    <value>移動</value>
+  </data>
+
+  <!-- Navigation commands -->
+  <data name="Back" xml:space="preserve">
+    <value>戻る</value>
+  </data>
+  <data name="Forward" xml:space="preserve">
+    <value>進む</value>
+  </data>
+  <data name="Reload" xml:space="preserve">
+    <value>再読み込み</value>
+  </data>
+  <data name="Stop" xml:space="preserve">
+    <value>停止</value>
+  </data>
+  <data name="NewTab" xml:space="preserve">
+    <value>新しいタブ</value>
+  </data>
+  <data name="CloseTab" xml:space="preserve">
+    <value>タブを閉じる</value>
+  </data>
+  <data name="Settings" xml:space="preserve">
+    <value>設定</value>
+  </data>
+
+  <!-- Security readout -->
+  <data name="SecuritySecure" xml:space="preserve">
+    <value>安全な接続</value>
+  </data>
+  <data name="SecurityInsecure" xml:space="preserve">
+    <value>安全ではありません</value>
+  </data>
+  <data name="SecurityTls13" xml:space="preserve">
+    <value>安全 — TLS 1.3</value>
+    <comment>Used when the app's own transport negotiated TLS 1.3.</comment>
+  </data>
+  <data name="SecurityWebViewCeiling" xml:space="preserve">
+    <value>(TLS 1.2 max, WebView).</value>
+    <comment>The honest ceiling for anything the hosted WebView loads: Schannel, not our TLS 1.3 stack.</comment>
+  </data>
+
+  <!-- Status -->
+  <data name="Loading" xml:space="preserve">
+    <value>読み込み中…</value>
+  </data>
+  <data name="LoadComplete" xml:space="preserve">
+    <value>完了</value>
+  </data>
+
+  <!-- Language -->
+  <data name="LanguageLabel" xml:space="preserve">
+    <value>言語</value>
+  </data>
+  <data name="LanguageAutomatic" xml:space="preserve">
+    <value>自動 (電話の言語を使用)</value>
+  </data>
+
+  <!-- Diagnostics -->
+  <data name="DiagnosticsTitle" xml:space="preserve">
+    <value>診断</value>
+  </data>
+  <data name="DiagnosticsCompatProbe" xml:space="preserve">
+    <value>互換性チェックを実行</value>
+  </data>
+  <data name="DiagnosticsEngineLabel" xml:space="preserve">
+    <value>レンダリングエンジン</value>
+  </data>
+  <data name="CompatLayerLabel" xml:space="preserve">
+    <value>互換レイヤー</value>
+  </data>
+  <data name="CompatLayerActive" xml:space="preserve">
+    <value>このエンジンに必要</value>
+  </data>
+  <data name="CompatLayerNative" xml:space="preserve">
+    <value>不要</value>
+  </data>
+  <data name="DiagnosticsNoMissingFeatures" xml:space="preserve">
+    <value>不足しているWeb機能はありません。</value>
+  </data>
+  <data name="ProbeNotRun" xml:space="preserve">
+    <value>ページから応答がありません: 読み込み中か、このエンジンではスクリプトを実行できません。</value>
+  </data>
+  <data name="ParseNoDocument" xml:space="preserve">
+    <value>解析対象がありません: タブにアドレスがないか、応答がHTMLではありません。</value>
+  </data>
+  <data name="IeModeCheck" xml:space="preserve">
+    <value>IEモードを確認</value>
+  </data>
+  <data name="IeModeReport" xml:space="preserve">
+    <value>ドキュメントモード: </value>
+  </data>
+  <data name="DiagnosticsClose" xml:space="preserve">
+    <value>閉じる</value>
+  </data>
+
+  <!-- Errors -->
+  <data name="ErrorUnknownScheme" xml:space="preserve">
+    <value>そのアドレスはサポートされていないスキームを使用しています。</value>
+  </data>
+  <data name="ErrorPageFailed" xml:space="preserve">
+    <value>このページを表示できませんでした。</value>
+  </data>
+  <data name="ErrorNoConnection" xml:space="preserve">
+    <value>サーバーに接続できませんでした。</value>
+  </data>
+  <data name="ErrorTlsHandshake" xml:space="preserve">
+    <value>安全な接続を確立できませんでした。</value>
+  </data>
+  <data name="ErrorNavigationFailed" xml:space="preserve">
+    <value>ナビゲーションに失敗しました。アドレスを確認してもう一度お試しください。</value>
+  </data>
+
+  <!-- Tabs -->
+  <data name="TabsTitle" xml:space="preserve">
+    <value>タブ</value>
+  </data>
+
+  <!-- Desktop site -->
+  <data name="DesktopSite" xml:space="preserve">
+    <value>デスクトップサイト</value>
+  </data>
+
+  <!-- History and favorites -->
+  <data name="HistoryTitle" xml:space="preserve">
+    <value>履歴</value>
+  </data>
+  <data name="FavoritesTitle" xml:space="preserve">
+    <value>お気に入り</value>
+  </data>
+  <data name="AddFavorite" xml:space="preserve">
+    <value>お気に入りに追加</value>
+  </data>
+  <data name="RemoveFavorite" xml:space="preserve">
+    <value>お気に入りを削除</value>
+  </data>
+  <data name="ClearHistory" xml:space="preserve">
+    <value>履歴を消去</value>
+  </data>
+
+  <!-- Security details -->
+  <data name="SecurityDetails" xml:space="preserve">
+    <value>セキュリティの詳細</value>
+  </data>
+
+  <!-- TLS probe -->
+  <data name="TlsProbeHostLabel" xml:space="preserve">
+    <value>TLSプローブのホスト</value>
+  </data>
+  <data name="TlsProbeRun" xml:space="preserve">
+    <value>TLSプローブを実行</value>
+  </data>
+
+  <!-- DoH -->
+  <data name="DohServerLabel" xml:space="preserve">
+    <value>DoHサーバー</value>
+  </data>
+
+  <!-- Pinning -->
+  <data name="PinTitle" xml:space="preserve">
+    <value>証明書のピン</value>
+  </data>
+  <data name="PinAdd" xml:space="preserve">
+    <value>ピンを追加</value>
+  </data>
+  <data name="PinRemove" xml:space="preserve">
+    <value>ピンを削除</value>
+  </data>
+  <data name="PinStored" xml:space="preserve">
+    <value>ピンを保存しました。</value>
+  </data>
+  <data name="PinMismatch" xml:space="preserve">
+    <value>次回のプローブでピンが一致しません。</value>
+  </data>
+
+  <!-- Homepage -->
+  <data name="HomepageLabel" xml:space="preserve">
+    <value>ホームページ</value>
+  </data>
+  <data name="EngineLabel" xml:space="preserve">
+    <value>レンダリングエンジン</value>
+  </data>
+  <data name="EngineAuto" xml:space="preserve">
+    <value>自動</value>
+  </data>
+  <data name="EngineTrident" xml:space="preserve">
+    <value>System WebView (Trident)</value>
+  </data>
+  <data name="EngineRemote" xml:space="preserve">
+    <value>サーバー (リモートのChromium)</value>
+  </data>
+  <data name="EngineReasonSetting" xml:space="preserve">
+    <value>設定で選択。</value>
+  </data>
+  <data name="EngineReasonSettingRemote" xml:space="preserve">
+    <value>設定で選択: 設定したサーバーがページを描画し、読む内容をすべて読むことができます。</value>
+  </data>
+  <data name="EngineReasonRemoteSecondary" xml:space="preserve">
+    <value>プライマリサーバーが応答しなかったため、セカンダリを使用しています。</value>
+  </data>
+  <data name="EngineReasonRemoteNotConfigured" xml:space="preserve">
+    <value>サーバーが設定されていません。設定のサーバーで追加してください。</value>
+  </data>
+  <data name="EngineReasonRemoteUnreachable" xml:space="preserve">
+    <value>どちらのサーバーも応答しませんでした。</value>
+  </data>
+  <data name="EngineReasonAutoNoMeasurement" xml:space="preserve">
+    <value>自動: まだページが測定されていないため、システムエンジンを使用します。</value>
+  </data>
+  <data name="EngineReasonAutoFits" xml:space="preserve">
+    <value>自動: 測定したページはシステムエンジンで動作します。</value>
+  </data>
+  <data name="EngineReasonAutoTooManyMissingFeatures" xml:space="preserve">
+    <value>自動: 測定したページはシステムエンジンにない機能を多数必要とします。</value>
+  </data>
+
+  <!-- Lightweight modes -->
+  <data name="ReadingMode" xml:space="preserve">
+    <value>リーディングモード</value>
+  </data>
+  <data name="NightMode" xml:space="preserve">
+    <value>ナイトモード</value>
+  </data>
+  <data name="Find" xml:space="preserve">
+    <value>検索</value>
+  </data>
+  <data name="Share" xml:space="preserve">
+    <value>共有</value>
+  </data>
+  <data name="PrivateMode" xml:space="preserve">
+    <value>プライベートモード</value>
+  </data>
+  <data name="BlockTrackers" xml:space="preserve">
+    <value>トラッカーをブロック</value>
+  </data>
+  <data name="RestoreSession" xml:space="preserve">
+    <value>起動時にタブを復元</value>
+  </data>
+  <data name="Diagnostics" xml:space="preserve">
+    <value>診断</value>
+  </data>
+  <data name="FindNoMatch" xml:space="preserve">
+    <value>見つかりません</value>
+  </data>
+  <data name="BlockedTracker" xml:space="preserve">
+    <value>トラッカーをブロックしました</value>
+  </data>
+  <data name="ReaderFallback" xml:space="preserve">
+    <value>簡易表示の記事を表示しています</value>
+  </data>
+  <data name="LiteRedirects" xml:space="preserve">
+    <value>軽量版のサイトを優先</value>
+  </data>
+
+  <!-- Offline pages -->
+  <data name="SavePage" xml:space="preserve">
+    <value>ページを保存</value>
+  </data>
+  <data name="SavedPages" xml:space="preserve">
+    <value>保存したページ</value>
+  </data>
+  <data name="SavedDelete" xml:space="preserve">
+    <value>削除</value>
+  </data>
+
+  <!-- Per-site display -->
+  <data name="TextSize" xml:space="preserve">
+    <value>文字サイズ</value>
+  </data>
+  <data name="Images" xml:space="preserve">
+    <value>画像</value>
+  </data>
+
+  <!-- Speed dial -->
+  <data name="SpeedDial" xml:space="preserve">
+    <value>スピードダイヤル</value>
+  </data>
+  <data name="SpeedDialAdd" xml:space="preserve">
+    <value>現在のページを追加</value>
+  </data>
+  <data name="SpeedDialRemove" xml:space="preserve">
+    <value>削除</value>
+  </data>
+
+  <!-- Backup and restore -->
+  <data name="Backup" xml:space="preserve">
+    <value>バックアップ</value>
+  </data>
+  <data name="Restore" xml:space="preserve">
+    <value>復元</value>
+  </data>
+  <data name="BackupDone" xml:space="preserve">
+    <value>完了</value>
+  </data>
+
+  <!-- Error recovery -->
+  <data name="Retry" xml:space="preserve">
+    <value>再試行</value>
+  </data>
+
+  <!-- Remote server: where the pages are drawn, and what that costs -->
+  <data name="RemoteNotice" xml:space="preserve">
+    <value>ページはサーバーが描画するため、運営者はパスワードを含め読む内容をすべて読むことができます。サーバーを自分で運営している場合や運営者を信頼できる場合を除き、オフのままにしてください。</value>
+  </data>
+  <data name="RemoteServerLabel" xml:space="preserve">
+    <value>サーバーアドレス</value>
+  </data>
+  <data name="RemoteTokenLabel" xml:space="preserve">
+    <value>デバイストークン</value>
+  </data>
+  <data name="RemoteBackupLabel" xml:space="preserve">
+    <value>バックアップサーバーのアドレス (任意)</value>
+  </data>
+  <data name="RemoteBackupTokenLabel" xml:space="preserve">
+    <value>バックアップデバイスのトークン (任意)</value>
+  </data>
+  <data name="RemoteUseServer" xml:space="preserve">
+    <value>ページをサーバーで描画</value>
+  </data>
+
+  <!-- The keys bar: the keys a phone keyboard cannot send (see MainPage.xaml) -->
+  <data name="RemoteKeys" xml:space="preserve">
+    <value>キー</value>
+  </data>
+  <data name="KeyTab" xml:space="preserve">
+    <value>Tab</value>
+  </data>
+  <data name="KeyEnter" xml:space="preserve">
+    <value>Enter</value>
+  </data>
+  <data name="KeyEscape" xml:space="preserve">
+    <value>Esc</value>
+  </data>
+  <data name="KeyBackspace" xml:space="preserve">
+    <value>Backspace</value>
+  </data>
+  <data name="KeyLeft" xml:space="preserve">
+    <value>&#x2190;</value>
+  </data>
+  <data name="KeyUp" xml:space="preserve">
+    <value>&#x2191;</value>
+  </data>
+  <data name="KeyDown" xml:space="preserve">
+    <value>&#x2193;</value>
+  </data>
+  <data name="KeyRight" xml:space="preserve">
+    <value>&#x2192;</value>
+  </data>
+  <data name="KeyBarClose" xml:space="preserve">
+    <value>閉じる</value>
+  </data>
+</root>

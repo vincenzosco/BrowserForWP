@@ -21,14 +21,29 @@ Namespace Engine
         Public Property Name As String
         Public Property RenderingEngine As String
         Public Property SupportsTls13 As Boolean
+
+        ''' <summary>
+        ''' True when the engine can execute script at all. False for an engine
+        ''' that renders markup and nothing else.
+        ''' </summary>
+        Public Property SupportsScripting As Boolean
+
         Public Property SupportsModernJavaScript As Boolean
         Public Property SupportsWebSocket As Boolean
         Public Property SupportsFetch As Boolean
 
-        ''' <summary>True when the injected compatibility layer is load-bearing.</summary>
+        ''' <summary>
+        ''' True when the injected compatibility layer is load-bearing.
+        '''
+        ''' The scripting test is not redundant with the modern-JavaScript one: an
+        ''' engine with no script host does not support modern JavaScript either,
+        ''' and injecting compat.js into it is meaningless rather than merely
+        ''' pointless. Without this, the native engine would claim it needed a
+        ''' layer it cannot possibly accept.
+        ''' </summary>
         Public ReadOnly Property NeedsPolyfillLayer As Boolean
             Get
-                Return Not SupportsModernJavaScript
+                Return SupportsScripting AndAlso Not SupportsModernJavaScript
             End Get
         End Property
 

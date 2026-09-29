@@ -2,15 +2,19 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 2013
 VisualStudioVersion = 12.0.40629.0
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{F184B08F-C81C-45F6-A57F-5ABD9991F28F}") = "BrowserForWP", "BrowserForWP\BrowserForWP.vbproj", "{4C23ED88-2EFF-4278-A8AA-E102E2F98B3F}"
+Project("{F184B08F-C81C-45F6-A57F-5ABD9991F28F}") = "BrowserForWP", "BrowserForWP/BrowserForWP.vbproj", "{4C23ED88-2EFF-4278-A8AA-E102E2F98B3F}"
 EndProject
-Project("{BC8A1FFA-BEE3-4634-8014-F334798102B3}") = "BrowserForWP.Core", "BrowserForWP.Core\BrowserForWP.Core.vbproj", "{C0DE0002-0002-4A2B-9C3D-1B2C3D4E5F02}"
+Project("{F184B08F-C81C-45F6-A57F-5ABD9991F28F}") = "BrowserForWP.Core", "BrowserForWP.Core/BrowserForWP.Core.vbproj", "{C0DE0002-0002-4A2B-9C3D-1B2C3D4E5F02}"
 EndProject
-Project("{BC8A1FFA-BEE3-4634-8014-F334798102B3}") = "BrowserForWP.Crypto", "BrowserForWP.Crypto\BrowserForWP.Crypto.vbproj", "{C0DE0001-0001-4A2B-9C3D-1B2C3D4E5F01}"
+Project("{F184B08F-C81C-45F6-A57F-5ABD9991F28F}") = "BrowserForWP.Crypto", "BrowserForWP.Crypto/BrowserForWP.Crypto.vbproj", "{C0DE0001-0001-4A2B-9C3D-1B2C3D4E5F01}"
 EndProject
-Project("{BC8A1FFA-BEE3-4634-8014-F334798102B3}") = "BrowserForWP.Localization", "BrowserForWP.Localization\BrowserForWP.Localization.vbproj", "{C0DE0003-0003-4A2B-9C3D-1B2C3D4E5F03}"
+Project("{F184B08F-C81C-45F6-A57F-5ABD9991F28F}") = "BrowserForWP.Localization", "BrowserForWP.Localization/BrowserForWP.Localization.vbproj", "{C0DE0003-0003-4A2B-9C3D-1B2C3D4E5F03}"
 EndProject
-Project("{BC8A1FFA-BEE3-4634-8014-F334798102B3}") = "BrowserForWP.Net", "BrowserForWP.Net\BrowserForWP.Net.vbproj", "{3B9E1C74-5A21-4F0E-9D8C-6E2A7B4F1D93}"
+Project("{F184B08F-C81C-45F6-A57F-5ABD9991F28F}") = "BrowserForWP.Net", "BrowserForWP.Net/BrowserForWP.Net.vbproj", "{3B9E1C74-5A21-4F0E-9D8C-6E2A7B4F1D93}"
+EndProject
+Project("{F184B08F-C81C-45F6-A57F-5ABD9991F28F}") = "BrowserForWP.Core.Tests", "tests/BrowserForWP.Core.Tests/BrowserForWP.Core.Tests.vbproj", "{C0DE0004-0004-4A2B-9C3D-1B2C3D4E5F04}"
+EndProject
+Project("{F184B08F-C81C-45F6-A57F-5ABD9991F28F}") = "BrowserForWP.Crypto.Tests", "tests/BrowserForWP.Crypto.Tests/BrowserForWP.Crypto.Tests.vbproj", "{C0DE0005-0005-4A2B-9C3D-1B2C3D4E5F05}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -88,6 +92,24 @@ Global
 		{3B9E1C74-5A21-4F0E-9D8C-6E2A7B4F1D93}.Release|ARM.Build.0 = Release|ARM
 		{3B9E1C74-5A21-4F0E-9D8C-6E2A7B4F1D93}.Release|x86.ActiveCfg = Release|x86
 		{3B9E1C74-5A21-4F0E-9D8C-6E2A7B4F1D93}.Release|x86.Build.0 = Release|x86
+		{C0DE0004-0004-4A2B-9C3D-1B2C3D4E5F04}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C0DE0004-0004-4A2B-9C3D-1B2C3D4E5F04}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C0DE0004-0004-4A2B-9C3D-1B2C3D4E5F04}.Debug|ARM.ActiveCfg = Debug|ARM
+		{C0DE0004-0004-4A2B-9C3D-1B2C3D4E5F04}.Debug|ARM.Build.0 = Debug|ARM
+		{C0DE0004-0004-4A2B-9C3D-1B2C3D4E5F04}.Debug|x86.ActiveCfg = Debug|x86
+		{C0DE0004-0004-4A2B-9C3D-1B2C3D4E5F04}.Debug|x86.Build.0 = Debug|x86
+		{C0DE0004-0004-4A2B-9C3D-1B2C3D4E5F04}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C0DE0004-0004-4A2B-9C3D-1B2C3D4E5F04}.Release|ARM.ActiveCfg = Release|ARM
+		{C0DE0004-0004-4A2B-9C3D-1B2C3D4E5F04}.Release|x86.ActiveCfg = Release|x86
+		{C0DE0005-0005-4A2B-9C3D-1B2C3D4E5F05}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C0DE0005-0005-4A2B-9C3D-1B2C3D4E5F05}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C0DE0005-0005-4A2B-9C3D-1B2C3D4E5F05}.Debug|ARM.ActiveCfg = Debug|ARM
+		{C0DE0005-0005-4A2B-9C3D-1B2C3D4E5F05}.Debug|ARM.Build.0 = Debug|ARM
+		{C0DE0005-0005-4A2B-9C3D-1B2C3D4E5F05}.Debug|x86.ActiveCfg = Debug|x86
+		{C0DE0005-0005-4A2B-9C3D-1B2C3D4E5F05}.Debug|x86.Build.0 = Debug|x86
+		{C0DE0005-0005-4A2B-9C3D-1B2C3D4E5F05}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C0DE0005-0005-4A2B-9C3D-1B2C3D4E5F05}.Release|ARM.ActiveCfg = Release|ARM
+		{C0DE0005-0005-4A2B-9C3D-1B2C3D4E5F05}.Release|x86.ActiveCfg = Release|x86
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

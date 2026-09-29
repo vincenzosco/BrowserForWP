@@ -226,6 +226,39 @@ Namespace Tls13
             Array.Copy(transcriptHash, 0, full, content.Length, transcriptHash.Length)
             Return full
         End Function
+
+        ''' <summary>SPKI pin: Base64(SHA256(leaf PublicKeyBlob)). Empty on failure.</summary>
+        Public Shared Function ComputeSpkiPinBase64(certificateDer As Byte()) As String
+            Try
+                If certificateDer Is Nothing OrElse certificateDer.Length = 0 Then
+                    Return String.Empty
+                End If
+                Dim parsedInfo = X509Reader.Read(certificateDer)
+                If parsedInfo Is Nothing OrElse parsedInfo.PublicKeyBlob Is Nothing Then
+                    Return String.Empty
+                End If
+                Dim digest = WinRtCrypto.Sha256(parsedInfo.PublicKeyBlob)
+                Return Convert.ToBase64String(digest)
+            Catch ex As Exception
+                Return String.Empty
+            End Try
+        End Function
+
+        ''' <summary>Pin check against a PinStore; passes when no pin is stored.</summary>
+        Public Shared Function VerifyPin(certificateDer As Byte(), hostName As String, pinTable As PinStore) As Boolean
+            If pinTable Is Nothing Then
+                Return True
+            End If
+            Dim expectedPin As String = Nothing
+            If Not pinTable.TryGet(hostName, expectedPin) Then
+                Return True
+            End If
+            Dim presentedPin As String = ComputeSpkiPinBase64(certificateDer)
+            If String.IsNullOrEmpty(presentedPin) Then
+                Return False
+            End If
+            Return pinTable.Verify(hostName, presentedPin)
+        End Function
     End Class
 
 End Namespace

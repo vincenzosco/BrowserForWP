@@ -24,10 +24,14 @@
  *   - Every define is guarded, so a hostile page cannot have these throw during
  *     injection.
  */
-(function () {
+(function (globalScope) {
     'use strict';
 
-    var globalScope = this;
+    // globalScope arrives as an argument (window) because `this` inside a
+    // strict IIFE is undefined — `var globalScope = this` silently broke every
+    // section below the first globalScope dereference (no Promise, no fetch,
+    // no timing hook). Caught by executing the bundle, not by reading it.
+    if (!globalScope) { return; }
 
     /**
      * Install `value` as `name` on `target` only when it is missing.
@@ -418,13 +422,209 @@
         globalScope.URLSearchParams = URLSearchParamsShim;
     }
 
+    // ── Map / Set / WeakMap / Symbol ──────────────────────────────────
+    // Minimal SameValueZero collections for feature-detecting pages. Iteration
+    // order is insertion order. WeakMap holds references for page lifetime:
+    // true weak semantics need engine support Trident does not have.
+    function sameVal(a, b) {
+        return a === b || (a !== a && b !== b);
+    }
+    function keyIndex(keys, key) {
+        for (var i = 0; i < keys.length; i++) {
+            if (sameVal(keys[i], key)) { return i; }
+        }
+        return -1;
+    }
+
+    if (!globalScope.Map) {
+        var MapShim = function () { this._k = []; this._v = []; };
+        MapShim.prototype.set = function (k, v) {
+            var at = keyIndex(this._k, k);
+            if (at === -1) { this._k.push(k); this._v.push(v); }
+            else { this._v[at] = v; }
+            return this;
+        };
+        MapShim.prototype.get = function (k) {
+            var at = keyIndex(this._k, k);
+            return at === -1 ? undefined : this._v[at];
+        };
+        MapShim.prototype.has = function (k) { return keyIndex(this._k, k) !== -1; };
+        MapShim.prototype['delete'] = function (k) {
+            var at = keyIndex(this._k, k);
+            if (at === -1) { return false; }
+            this._k.splice(at, 1); this._v.splice(at, 1); return true;
+        };
+        MapShim.prototype.clear = function () { this._k = []; this._v = []; };
+        MapShim.prototype.size = function () { return this._k.length; };
+        MapShim.prototype.forEach = function (fn, self) {
+            for (var i = 0; i < this._k.length; i++) { fn.call(self, this._v[i], this._k[i], this); }
+        };
+        globalScope.Map = MapShim;
+    }
+
+    if (!globalScope.Set) {
+        var SetShim = function () { this._v = []; };
+        SetShim.prototype.add = function (v) {
+            if (keyIndex(this._v, v) === -1) { this._v.push(v); }
+            return this;
+        };
+        SetShim.prototype.has = function (v) { return keyIndex(this._v, v) !== -1; };
+        SetShim.prototype['delete'] = function (v) {
+            var at = keyIndex(this._v, v);
+            if (at === -1) { return false; }
+            this._v.splice(at, 1); return true;
+        };
+        SetShim.prototype.clear = function () { this._v = []; };
+        SetShim.prototype.size = function () { return this._v.length; };
+        SetShim.prototype.forEach = function (fn, self) {
+            for (var i = 0; i < this._v.length; i++) { fn.call(self, this._v[i], this._v[i], this); }
+        };
+        globalScope.Set = SetShim;
+    }
+
+    if (!globalScope.WeakMap) {
+        var WeakMapShim = function () { this._k = []; this._v = []; };
+        WeakMapShim.prototype.set = function (k, v) {
+            var at = keyIndex(this._k, k);
+            if (at === -1) { this._k.push(k); this._v.push(v); }
+            else { this._v[at] = v; }
+            return this;
+        };
+        WeakMapShim.prototype.get = function (k) {
+            var at = keyIndex(this._k, k);
+            return at === -1 ? undefined : this._v[at];
+        };
+        WeakMapShim.prototype.has = function (k) { return keyIndex(this._k, k) !== -1; };
+        WeakMapShim.prototype['delete'] = function (k) {
+            var at = keyIndex(this._k, k);
+            if (at === -1) { return false; }
+            this._k.splice(at, 1); this._v.splice(at, 1); return true;
+        };
+        globalScope.WeakMap = WeakMapShim;
+    }
+
+    // Symbol stub: unique-string factory plus the well-known keys pages test
+    // for. typeof checks for real symbols still fail — that needs the engine.
+    if (!globalScope.Symbol) {
+        var symCtr = 0;
+        var SymbolShim = function (desc) {
+            symCtr += 1;
+            return '@@symbol:' + (desc || '') + '#' + symCtr;
+        };
+        SymbolShim.iterator = '@@symbol:iterator#0';
+        SymbolShim.toStringTag = '@@symbol:toStringTag#0';
+        SymbolShim.hasInstance = '@@symbol:hasInstance#0';
+        SymbolShim.species = '@@symbol:species#0';
+        globalScope.Symbol = SymbolShim;
+    }
+
+    // ── DOM helpers ─────────────────────────────────────────────────────
+    if (globalScope.Element && globalScope.Element.prototype) {
+        var elProto = globalScope.Element.prototype;
+        if (!elProto.matches && elProto.msMatchesSelector) {
+            elProto.matches = function (sel) { return this.msMatchesSelector(sel); };
+        }
+        if (!elProto.closest) {
+            elProto.closest = function (sel) {
+                var node = this;
+                while (node) {
+                    try {
+                        if (node.matches && node.matches(sel)) { return node; }
+                    } catch (e) { return null; }
+                    node = node.parentElement || node.parentNode;
+                    if (node && node.nodeType !== 1) { node = node.parentNode; }
+                }
+                return null;
+            };
+        }
+        if (!elProto.remove) {
+            elProto.remove = function () {
+                if (this.parentNode) { this.parentNode.removeChild(this); }
+            };
+        }
+    }
+    if (!globalScope.CustomEvent && globalScope.document && globalScope.document.createEvent) {
+        globalScope.CustomEvent = function (type, params) {
+            params = params || {};
+            var evt = globalScope.document.createEvent('CustomEvent');
+            evt.initCustomEvent(type, !!params.bubbles, !!params.cancelable, params.detail);
+            return evt;
+        };
+    }
+    if (globalScope.NodeList && globalScope.NodeList.prototype && !globalScope.NodeList.prototype.forEach) {
+        globalScope.NodeList.prototype.forEach = function (fn, self) {
+            for (var i = 0; i < this.length; i++) { fn.call(self, this[i], i, this); }
+        };
+    }
+
+    // ── fetch hardening ─────────────────────────────────────────────────
+    // Adds blob()/arrayBuffer() to the XHR-backed shim above, derived from
+    // text(): binary fidelity is best-effort on this engine. Headers keep
+    // get()/has() only — a no-op forEach would silently break iteration logic,
+    // so it is deliberately not faked.
+    if (globalScope.fetch && globalScope.Blob) {
+        var nativeFetch = globalScope.fetch;
+        globalScope.fetch = function (input, options) {
+            return nativeFetch(input, options).then(function (resp) {
+                if (!resp.blob) {
+                    resp.blob = function () {
+                        return resp.text().then(function (t) {
+                            return new globalScope.Blob([t]);
+                        });
+                    };
+                }
+                if (!resp.arrayBuffer) {
+                    resp.arrayBuffer = function () {
+                        return resp.text().then(function (t) {
+                            var bytes = new Array(t.length);
+                            for (var i = 0; i < t.length; i++) { bytes[i] = t.charCodeAt(i) & 255; }
+                            return bytes;
+                        });
+                    };
+                }
+                return resp;
+            });
+        };
+    }
+
+    // ── Observer stubs (eager, not spec-true) ───────────────────────────
+    // Firing immediately with isIntersecting:true makes lazy-load libraries
+    // load everything instead of never loading anything on this engine.
+    function eagerObserver(callback) {
+        this._cb = callback;
+        this._targets = [];
+    }
+    eagerObserver.prototype.observe = function (target) {
+        this._targets.push(target);
+        var self = this;
+        globalScope.setTimeout(function () {
+            try {
+                self._cb([{ target: target, isIntersecting: true, intersectionRatio: 1 }], self);
+            } catch (e) { /* page callback threw */ }
+        }, 0);
+    };
+    eagerObserver.prototype.unobserve = function (target) {
+        for (var i = 0; i < this._targets.length; i++) {
+            if (this._targets[i] === target) { this._targets.splice(i, 1); break; }
+        }
+    };
+    eagerObserver.prototype.disconnect = function () { this._targets = []; };
+    if (!globalScope.IntersectionObserver) {
+        globalScope.IntersectionObserver = function (cb) { eagerObserver.call(this, cb); };
+        globalScope.IntersectionObserver.prototype = eagerObserver.prototype;
+    }
+    if (!globalScope.ResizeObserver) {
+        globalScope.ResizeObserver = function (cb) { eagerObserver.call(this, cb); };
+        globalScope.ResizeObserver.prototype = eagerObserver.prototype;
+    }
+
     // ── Timing hook ───────────────────────────────────────────────────────
     // Lets the host page prove the shim ran, which the compatibility probe
     // reads back. Harmless if the page never looks at it.
     try {
         globalScope.__browserForWPCompat = {
-            version: 1,
+            version: 2,
             installedAt: Date.now()
         };
     } catch (e) { /* ignore */ }
-}());
+}(typeof window !== 'undefined' ? window : this));

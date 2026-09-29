@@ -544,7 +544,7 @@ the time, and most were VB-specific traps rather than logic bugs:
 | 1 | `MainPage.xaml` had two direct children of `<Page>`, so `Page.Content` was set twice and the XAML compiler never generated `MainPage.g.vb`. Every `x:Name` field then "did not exist". | ~70, all cascading |
 | 2 | `BrowserForWP.vbproj` declared `<Content Include="Polyfill\compat.js" />` for a file that never existed, aborting the build before the XAML compile. | ~40, all cascading |
 | 3 | `BrowserForWP.Net.vbproj` had no `<Import Include>` ItemGroup and no option groups; `ClientHelloBuilder.vb` used VB-14 leading-dot chains; a local named `extensionType` shadowed the `ExtensionType` enum; `TlsReader` had no `SubReaderVec24`; `WinRtCrypto.ToBuffer` was `Friend`; `CertificateVerifyInfo` was nested; `CryptographicEngine.Verify` does not exist; `Encoding.ASCII` is absent from the profile. | 54, across 6 files |
-| 4 | `{ThemeResource TextBoxBackgroundThemeBrush}` is a WP8.0 key that WP8.1 does not define (non-fatal `WMC9999`); base image assets were unqualified, so the packager warned `APPX1621` six times. | 0 errors, 2 defect classes |
+| 4 | **CORRECTED — the key claim in this row was backwards. See `2026-09-28-xaml-theme-resources.md`.** `{ThemeResource TextBoxBackgroundThemeBrush}` **is** a WP8.1 key: the phone's own design dictionary defines it and the phone's own `TextBox` style uses it. `TextControlBackground`, the key it was swapped *to*, is defined on no 8.1 platform, and the `WMC9999` cited as the reason for the swap does not track the key at all. Base image assets were indeed unqualified, so the packager warned `APPX1621` six times. | 0 errors, 2 defect classes |
 
 ### What this changes in the plan
 

@@ -1,0 +1,396 @@
+{
+  "protocolVersion": 1,
+  "magicHex": "b752",
+  "headerSize": 16,
+  "note": "Deterministic. Regenerate with `npm run gen-vectors`; `npm test` fails if this file has drifted.",
+  "inputs": {
+    "tokenHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+    "tokenBase64Url": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+    "sessionSaltHex": "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"
+  },
+  "keySchedule": {
+    "prkHex": "a27b86e7a70a029cba778d6f738d952696d6d8361b95103dd84ae9df6af063af",
+    "clientToServerKeyHex": "05b24cba02f7c44169843bb357a7dfd348901dada2750bc4d766ca9deeaf6ec6",
+    "serverToClientKeyHex": "57c100dc87671faa03fe8787cc74d37bf2b3b57c6f0d87606febbde9fb4ffb7d"
+  },
+  "nonces": [
+    {
+      "seq": 0,
+      "hex": "000000000000000000000000"
+    },
+    {
+      "seq": 1,
+      "hex": "000000000000000000000001"
+    },
+    {
+      "seq": 2,
+      "hex": "000000000000000000000002"
+    },
+    {
+      "seq": 258,
+      "hex": "000000000000000000000102"
+    },
+    {
+      "seq": 4294967295,
+      "hex": "0000000000000000ffffffff"
+    }
+  ],
+  "payloads": [
+    {
+      "name": "HELLO",
+      "type": 1,
+      "sealed": false,
+      "hex": "010000002430663763316132622d346435652d346636302d386139622d3063316432653366346135620000002b41414543417751464267634943516f4c4441304f4478415245684d554652595847426b614778776448683801e00320020000002242726f77736572466f7257502f302e31202857696e646f777350686f6e65382e3129"
+    },
+    {
+      "name": "HELLO_ACK_REFUSED",
+      "type": 2,
+      "sealed": false,
+      "hex": "0000020000001f7468652064657669636520746f6b656e20646f6573206e6f74206d61746368"
+    },
+    {
+      "name": "HELLO_ACK_OK",
+      "type": 2,
+      "sealed": false,
+      "hex": "0100000020202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f00200000010000001a42726f77736572466f7257502072656e646572207365727665720000002b68747470733a2f2f72656e6465722e6578616d706c652f617564696f2f39663361316332323f743d616263"
+    },
+    {
+      "name": "NAVIGATE",
+      "type": 16,
+      "sealed": true,
+      "hex": "0000001468747470733a2f2f6578616d706c652e636f6d2f"
+    },
+    {
+      "name": "TAP",
+      "type": 22,
+      "sealed": true,
+      "hex": "007800f00101"
+    },
+    {
+      "name": "SCROLL",
+      "type": 23,
+      "sealed": true,
+      "hex": "00c8012c0000ff88"
+    },
+    {
+      "name": "KEY",
+      "type": 24,
+      "sealed": true,
+      "hex": "00000005456e7465720000000000"
+    },
+    {
+      "name": "TEXT",
+      "type": 25,
+      "sealed": true,
+      "hex": "000000046369616f"
+    },
+    {
+      "name": "RESIZE",
+      "type": 21,
+      "sealed": true,
+      "hex": "02d0050003"
+    },
+    {
+      "name": "FIND",
+      "type": 26,
+      "sealed": true,
+      "hex": "000000046e657773"
+    },
+    {
+      "name": "SETTINGS",
+      "type": 27,
+      "sealed": true,
+      "hex": "05"
+    },
+    {
+      "name": "PING",
+      "type": 28,
+      "sealed": true,
+      "hex": "01020304"
+    },
+    {
+      "name": "ACK",
+      "type": 29,
+      "sealed": true,
+      "hex": "00000007"
+    },
+    {
+      "name": "BACK",
+      "type": 17,
+      "sealed": true,
+      "hex": ""
+    },
+    {
+      "name": "TITLE",
+      "type": 32,
+      "sealed": true,
+      "hex": "0000000e4578616d706c6520446f6d61696e"
+    },
+    {
+      "name": "URL",
+      "type": 33,
+      "sealed": true,
+      "hex": "0000001468747470733a2f2f6578616d706c652e636f6d2f"
+    },
+    {
+      "name": "LOAD_STATE",
+      "type": 34,
+      "sealed": true,
+      "hex": "0100000000"
+    },
+    {
+      "name": "FIND_RESULT",
+      "type": 36,
+      "sealed": true,
+      "hex": "0100000003"
+    },
+    {
+      "name": "AUDIO",
+      "type": 37,
+      "sealed": true,
+      "hex": "010000002b68747470733a2f2f72656e6465722e6578616d706c652f617564696f2f39663361316332323f743d616263"
+    },
+    {
+      "name": "PONG",
+      "type": 38,
+      "sealed": true,
+      "hex": "01020304"
+    },
+    {
+      "name": "FRAME_FULL",
+      "type": 35,
+      "sealed": true,
+      "hex": "010100010000000001e0032000000004ffd8ffd9"
+    }
+  ],
+  "frames": [
+    {
+      "name": "navigate-seq1",
+      "direction": "client-to-server",
+      "type": 16,
+      "typeName": "NAVIGATE",
+      "seq": 1,
+      "keyHex": "05b24cba02f7c44169843bb357a7dfd348901dada2750bc4d766ca9deeaf6ec6",
+      "nonceHex": "000000000000000000000001",
+      "aadHex": "b7520110000000280000000100000000",
+      "plaintextHex": "0000001468747470733a2f2f6578616d706c652e636f6d2f",
+      "frameHex": "b752011000000028000000010000000034b1ba729f074f0e8d68c455b148b16e99978cb11f952d7ae7e18ce57a7e7bd0201d2f6dfa928ffd"
+    },
+    {
+      "name": "tap-seq2",
+      "direction": "client-to-server",
+      "type": 22,
+      "typeName": "TAP",
+      "seq": 2,
+      "keyHex": "05b24cba02f7c44169843bb357a7dfd348901dada2750bc4d766ca9deeaf6ec6",
+      "nonceHex": "000000000000000000000002",
+      "aadHex": "b7520116000000160000000200000000",
+      "plaintextHex": "007800f00101",
+      "frameHex": "b752011600000016000000020000000015884178b6da1a2c5c29c3d17a5eee8a1b9dcd0d6420"
+    },
+    {
+      "name": "scroll-seq3",
+      "direction": "client-to-server",
+      "type": 23,
+      "typeName": "SCROLL",
+      "seq": 3,
+      "keyHex": "05b24cba02f7c44169843bb357a7dfd348901dada2750bc4d766ca9deeaf6ec6",
+      "nonceHex": "000000000000000000000003",
+      "aadHex": "b7520117000000180000000300000000",
+      "plaintextHex": "00c8012c0000ff88",
+      "frameHex": "b7520117000000180000000300000000f57bd61b7232ae637de82cd229e6271d70a8ff948e086bcd"
+    },
+    {
+      "name": "key-seq4",
+      "direction": "client-to-server",
+      "type": 24,
+      "typeName": "KEY",
+      "seq": 4,
+      "keyHex": "05b24cba02f7c44169843bb357a7dfd348901dada2750bc4d766ca9deeaf6ec6",
+      "nonceHex": "000000000000000000000004",
+      "aadHex": "b75201180000001e0000000400000000",
+      "plaintextHex": "00000005456e7465720000000000",
+      "frameHex": "b75201180000001e0000000400000000e28901f2549d561be177e3bdbf11f715deef7f7fc3e45140ca2b3f4cdc5b"
+    },
+    {
+      "name": "text-seq5",
+      "direction": "client-to-server",
+      "type": 25,
+      "typeName": "TEXT",
+      "seq": 5,
+      "keyHex": "05b24cba02f7c44169843bb357a7dfd348901dada2750bc4d766ca9deeaf6ec6",
+      "nonceHex": "000000000000000000000005",
+      "aadHex": "b7520119000000180000000500000000",
+      "plaintextHex": "000000046369616f",
+      "frameHex": "b7520119000000180000000500000000c831561c67a1368d35b3bb8fab8f990f55a8cbbd3daad223"
+    },
+    {
+      "name": "resize-seq6",
+      "direction": "client-to-server",
+      "type": 21,
+      "typeName": "RESIZE",
+      "seq": 6,
+      "keyHex": "05b24cba02f7c44169843bb357a7dfd348901dada2750bc4d766ca9deeaf6ec6",
+      "nonceHex": "000000000000000000000006",
+      "aadHex": "b7520115000000150000000600000000",
+      "plaintextHex": "02d0050003",
+      "frameHex": "b75201150000001500000006000000006939360cd765e658ab356d30d376009cae6f7e0cdf"
+    },
+    {
+      "name": "find-seq7",
+      "direction": "client-to-server",
+      "type": 26,
+      "typeName": "FIND",
+      "seq": 7,
+      "keyHex": "05b24cba02f7c44169843bb357a7dfd348901dada2750bc4d766ca9deeaf6ec6",
+      "nonceHex": "000000000000000000000007",
+      "aadHex": "b752011a000000180000000700000000",
+      "plaintextHex": "000000046e657773",
+      "frameHex": "b752011a0000001800000007000000002169441100434fa49aeebebd5f0954158e2f0c400ce0703b"
+    },
+    {
+      "name": "settings-seq8",
+      "direction": "client-to-server",
+      "type": 27,
+      "typeName": "SETTINGS",
+      "seq": 8,
+      "keyHex": "05b24cba02f7c44169843bb357a7dfd348901dada2750bc4d766ca9deeaf6ec6",
+      "nonceHex": "000000000000000000000008",
+      "aadHex": "b752011b000000110000000800000000",
+      "plaintextHex": "05",
+      "frameHex": "b752011b000000110000000800000000e66d2a337273b282d25edddb40b7f3cb89"
+    },
+    {
+      "name": "ping-seq9",
+      "direction": "client-to-server",
+      "type": 28,
+      "typeName": "PING",
+      "seq": 9,
+      "keyHex": "05b24cba02f7c44169843bb357a7dfd348901dada2750bc4d766ca9deeaf6ec6",
+      "nonceHex": "000000000000000000000009",
+      "aadHex": "b752011c000000140000000900000000",
+      "plaintextHex": "01020304",
+      "frameHex": "b752011c000000140000000900000000eda3d15c1e5de4b7ea070f9bde7fc155066368b1"
+    },
+    {
+      "name": "ack-seq10",
+      "direction": "client-to-server",
+      "type": 29,
+      "typeName": "ACK",
+      "seq": 10,
+      "keyHex": "05b24cba02f7c44169843bb357a7dfd348901dada2750bc4d766ca9deeaf6ec6",
+      "nonceHex": "00000000000000000000000a",
+      "aadHex": "b752011d000000140000000a00000000",
+      "plaintextHex": "00000007",
+      "frameHex": "b752011d000000140000000a000000003a400af08b4e577e42c147945976e590ed7c5870"
+    },
+    {
+      "name": "back-seq11",
+      "direction": "client-to-server",
+      "type": 17,
+      "typeName": "BACK",
+      "seq": 11,
+      "keyHex": "05b24cba02f7c44169843bb357a7dfd348901dada2750bc4d766ca9deeaf6ec6",
+      "nonceHex": "00000000000000000000000b",
+      "aadHex": "b7520111000000100000000b00000000",
+      "plaintextHex": "",
+      "frameHex": "b7520111000000100000000b000000005eeceb50d42618f8d4c8d8ace44aafda"
+    },
+    {
+      "name": "title-seq12",
+      "direction": "client-to-server",
+      "type": 32,
+      "typeName": "TITLE",
+      "seq": 12,
+      "keyHex": "05b24cba02f7c44169843bb357a7dfd348901dada2750bc4d766ca9deeaf6ec6",
+      "nonceHex": "00000000000000000000000c",
+      "aadHex": "b7520120000000220000000c00000000",
+      "plaintextHex": "0000000e4578616d706c6520446f6d61696e",
+      "frameHex": "b7520120000000220000000c00000000bc2106a2f136d7eb1e0a7af4d25ae9be592364ae63d10edd05e0d62a4c1ce95f99be"
+    },
+    {
+      "name": "url-seq13",
+      "direction": "client-to-server",
+      "type": 33,
+      "typeName": "URL",
+      "seq": 13,
+      "keyHex": "05b24cba02f7c44169843bb357a7dfd348901dada2750bc4d766ca9deeaf6ec6",
+      "nonceHex": "00000000000000000000000d",
+      "aadHex": "b7520121000000280000000d00000000",
+      "plaintextHex": "0000001468747470733a2f2f6578616d706c652e636f6d2f",
+      "frameHex": "b7520121000000280000000d00000000b1061a994e24b764544bfe6d94da2c8e680f835fa87e5e773b71df137d66780076ab02d373cb6de9"
+    },
+    {
+      "name": "load_state-seq14",
+      "direction": "client-to-server",
+      "type": 34,
+      "typeName": "LOAD_STATE",
+      "seq": 14,
+      "keyHex": "05b24cba02f7c44169843bb357a7dfd348901dada2750bc4d766ca9deeaf6ec6",
+      "nonceHex": "00000000000000000000000e",
+      "aadHex": "b7520122000000150000000e00000000",
+      "plaintextHex": "0100000000",
+      "frameHex": "b7520122000000150000000e00000000118675de2a70605d775f4f0a6c9361058b7b8d09a7"
+    },
+    {
+      "name": "find_result-seq15",
+      "direction": "client-to-server",
+      "type": 36,
+      "typeName": "FIND_RESULT",
+      "seq": 15,
+      "keyHex": "05b24cba02f7c44169843bb357a7dfd348901dada2750bc4d766ca9deeaf6ec6",
+      "nonceHex": "00000000000000000000000f",
+      "aadHex": "b7520124000000150000000f00000000",
+      "plaintextHex": "0100000003",
+      "frameHex": "b7520124000000150000000f000000005a9d9572405ba6178b14681df5f9bcb809a0ecbf7a"
+    },
+    {
+      "name": "audio-seq16",
+      "direction": "client-to-server",
+      "type": 37,
+      "typeName": "AUDIO",
+      "seq": 16,
+      "keyHex": "05b24cba02f7c44169843bb357a7dfd348901dada2750bc4d766ca9deeaf6ec6",
+      "nonceHex": "000000000000000000000010",
+      "aadHex": "b7520125000000400000001000000000",
+      "plaintextHex": "010000002b68747470733a2f2f72656e6465722e6578616d706c652f617564696f2f39663361316332323f743d616263",
+      "frameHex": "b75201250000004000000010000000007c16120fb4b821384fe6a90cc379e181118c1d0cf3ee566bdf7d32b8a025052764846330bf5f0ec6fdbce3864767b5a816ef9ab30657be6cbffe1fb4c6ba9a65"
+    },
+    {
+      "name": "pong-seq17",
+      "direction": "client-to-server",
+      "type": 38,
+      "typeName": "PONG",
+      "seq": 17,
+      "keyHex": "05b24cba02f7c44169843bb357a7dfd348901dada2750bc4d766ca9deeaf6ec6",
+      "nonceHex": "000000000000000000000011",
+      "aadHex": "b7520126000000140000001100000000",
+      "plaintextHex": "01020304",
+      "frameHex": "b7520126000000140000001100000000581f7ac06c84251e3fdc32dbd13c8f4d806de224"
+    },
+    {
+      "name": "frame_full-seq18",
+      "direction": "client-to-server",
+      "type": 35,
+      "typeName": "FRAME",
+      "seq": 18,
+      "keyHex": "05b24cba02f7c44169843bb357a7dfd348901dada2750bc4d766ca9deeaf6ec6",
+      "nonceHex": "000000000000000000000012",
+      "aadHex": "b7520123000000240000001200000000",
+      "plaintextHex": "010100010000000001e0032000000004ffd8ffd9",
+      "frameHex": "b7520123000000240000001200000000f106a8eb27af0fcf7fafc6663f48127d1126594bbf82edda977bf824cf938dd5b7f9a220"
+    },
+    {
+      "name": "title-s2c-seq1",
+      "direction": "server-to-client",
+      "type": 32,
+      "typeName": "TITLE",
+      "seq": 1,
+      "keyHex": "57c100dc87671faa03fe8787cc74d37bf2b3b57c6f0d87606febbde9fb4ffb7d",
+      "nonceHex": "000000000000000000000001",
+      "aadHex": "b7520120000000220000000100000000",
+      "plaintextHex": "0000000e4578616d706c6520446f6d61696e",
+      "frameHex": "b75201200000002200000001000000003264689130069c107efcf5a2ef6a49bc96090d4649ecfb13be85e1b61e90051c413c"
+    }
+  ]
+}
