@@ -97,10 +97,12 @@ wrapper and not `node bin/bfwp-device.js`: the image starts as root, and a
 registry written as root is one the server itself cannot read.
 
 A server can also serve a **registration page** where the phone's owner asks for
-the token themselves — `BFWP_REGISTER_PORT` (default 8445), on the machine's
-loopback unless the operator publishes it behind an access code. It is the same
-token either way, and `docs/DEPLOY.md` in the server repository has the tunnel
-and the access code.
+the token themselves. It sits at the **root of the server's address** — typing
+`https://render.example.com` in a browser is enough, and plain http on port 80
+redirects there — and it can be either published behind an access code or, if the
+operator opens it, left to whoever finds it with **one token per address per day**
+as the only limit. It mints the same token the command above does, and
+`docs/DEPLOY.md` in the server repository has both configurations.
 
 Either way, **a token belongs to the first phone that uses it**: the server binds
 it then and refuses any other device presenting it, so a replacement phone needs

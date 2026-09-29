@@ -105,10 +105,13 @@ non `node bin/bfwp-device.js`: l'immagine parte come root, e un registro scritto
 come root è un registro che il server stesso non riesce a leggere.
 
 Un server può anche esporre una **pagina di registrazione**, dove chi tiene il
-telefono chiede il token da solo — `BFWP_REGISTER_PORT` (predefinita 8445), sul
-loopback della macchina a meno che l'operatore non la pubblichi dietro un codice di
-accesso. Il token è lo stesso in entrambi i modi, e `docs/DEPLOY.md` nel repository
-del server spiega il tunnel e il codice.
+telefono chiede il token da solo. Sta alla **radice dell'indirizzo del server** —
+basta digitare `https://render.example.com` nel browser, e l'http semplice sulla
+porta 80 reindirizza lì — e può essere pubblicata dietro un codice di accesso
+oppure, se l'operatore la apre, lasciata a chi la trova con **un token per
+indirizzo al giorno** come unico limite. Conia lo stesso token del comando qui
+sopra, e `docs/DEPLOY.md` nel repository del server descrive entrambe le
+configurazioni.
 
 In ogni caso **un token appartiene al primo telefono che lo usa**: il server lo
 lega in quel momento e rifiuta ogni altro dispositivo che lo presenti, quindi per
