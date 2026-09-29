@@ -19,11 +19,22 @@
 ' perfect and taps the wrong link, which is why the arithmetic is spelled out
 ' rather than folded into one number.
 '
-' WHY THERE IS A HIDDEN TextBox. A Canvas has no keyboard. Tapping the picture
-' focuses a 1x1 transparent TextBox, which is what makes the platform raise the
-' soft keyboard, and what the person types is forwarded as TEXT. This is the part
-' of the file that has never run on a handset: see the verification table in
-' docs/MAINTAINING.md, where its row is left blank rather than marked as passing.
+' WHY THERE IS A HIDDEN TextBox. A Canvas has no keyboard. A 1x1 transparent
+' TextBox is what makes the platform raise the soft keyboard, and what the person
+' types is forwarded as TEXT.
+'
+' WHEN IT RISES IS THE SERVER'S ANSWER, NOT OURS. A Canvas cannot tell a text
+' field from a link, and the first version of this file focused the field on EVERY
+' tap -- so the keyboard covered half the page somebody was trying to read, on
+' every tap, forever. SetPageFocus is where the FOCUS message (0x27) lands: the
+' server looks at document.activeElement and says whether it takes text. True
+' focuses the field; False DISABLES it, because WinRT has no Unfocus() and
+' disabling the focused control is the one state change that both drops the focus
+' and closes the keyboard.
+'
+' This is still the part of the file that has never run on a handset: see the
+' verification table in docs/MAINTAINING.md, where its rows are left blank rather
+' than marked as passing.
 
 Imports System
 Imports System.Collections.Generic
@@ -64,6 +75,11 @@ Namespace Rendering
         Private _pixelRatio As Double
         Private _viewportWidth As Integer
         Private _viewportHeight As Integer
+
+        ' What the server last said about the page's focus. False until it says
+        ' otherwise, which is the safe direction: a keyboard that stays down is a
+        ' nuisance, one that rises over a page with no field in it is a bug.
+        Private _pageFocusEditable As Boolean
 
         ' Set while the box is being cleared on purpose, so that clearing it does
         ' not look like the person deleting a character.
@@ -113,20 +129,66 @@ Namespace Rendering
             SetScale(devicePixelRatio)
         End Sub
 
-        ''' <summary>True while the hidden field owns the soft keyboard.</summary>
-        Public ReadOnly Property HasKeyboardFocus As Boolean
+        ''' <summary>
+        ''' True when the page's focused element takes text, and therefore when the
+        ''' soft keyboard belongs on screen.
+        '''
+        ''' IT IS NOT "the field has focus". After a rotation the tree is
+        ''' re-arranged and the field reports FocusState.Unfocused even though the
+        ''' person was typing a moment ago -- so asking the control would close a
+        ''' keyboard nobody dismissed. The page's answer is the durable fact; the
+        ''' field's focus is one of its consequences.
+        ''' </summary>
+        Public ReadOnly Property WantsKeyboard As Boolean
             Get
-                Return _ime.FocusState <> FocusState.Unfocused
+                Return _pageFocusEditable
             End Get
         End Property
+
+        ''' <summary>
+        ''' What the server said about where the page's focus is.
+        '''
+        ''' Called for every FOCUS message, on the change the server reports rather
+        ''' than on a schedule. True re-enables the field before focusing it, because
+        ''' a previous message may have disabled it; False disables it, which is how
+        ''' a focused TextBox in WinRT is made to let go.
+        '''
+        ''' A desktop page with nothing editable in it therefore leaves the keyboard
+        ''' down, and the keys bar still works: Tab and Escape are KEY messages, not
+        ''' the soft keyboard.
+        ''' </summary>
+        Public Sub SetPageFocus(editable As Boolean)
+            _pageFocusEditable = editable
+            Try
+                If editable Then
+                    ' Enabled first: focusing a disabled control is a no-op, and the
+                    ' message that asks for focus is often the one after the message
+                    ' that took it away.
+                    _ime.IsEnabled = True
+                    _ime.Focus(FocusState.Programmatic)
+                    Return
+                End If
+                _ime.IsEnabled = False
+            Catch
+                ' A phone that refuses focus is a phone whose keyboard is not shown,
+                ' which is the same outcome as a refusal to hide one -- and the tap
+                ' that asked for it is still forwarded.
+            End Try
+        End Sub
 
         ''' <summary>
         ''' Raises the soft keyboard, or leaves it up. Called after a rotation,
         ''' because a re-arranged tree can drop focus and a keyboard that closes
         ''' itself when the phone turns is a keyboard the person did not dismiss.
+        '''
+        ''' A no-op unless the page's focused element takes text: the keys bar,
+        ''' scrolling and every tap must keep working on a page with nothing to type
+        ''' into, and this is the one place that could put a keyboard back over one.
         ''' </summary>
         Public Sub FocusKeyboard()
+            If Not _pageFocusEditable Then Return
             Try
+                _ime.IsEnabled = True
                 _ime.Focus(FocusState.Programmatic)
             Catch
                 ' A phone that refuses focus still gets the tap that asked for it.
@@ -213,14 +275,10 @@ Namespace Rendering
         Private Sub OnTapped(sender As Object, e As TappedRoutedEventArgs)
             If _raiseInput Is Nothing Then Return
 
-            ' The soft keyboard comes from a focused text field and nowhere else, so
-            ' every tap is also a request to type.
-            Try
-                _ime.Focus(FocusState.Programmatic)
-            Catch
-                ' A phone that refuses focus still gets the tap.
-            End Try
-
+            ' A tap is a tap and NOT a request to type. Focusing the hidden field
+            ' here is what raised the keyboard on links, buttons and empty space --
+            ' and the only thing that can tell those apart is the page, which is on
+            ' the server: SetPageFocus is where its answer arrives.
             Dim point As Windows.Foundation.Point = e.GetPosition(_canvas)
             Dim mapped As Windows.Foundation.Point = ToPage(point)
             _raiseInput(Clamp(mapped.X), Clamp(mapped.Y))

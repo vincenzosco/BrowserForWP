@@ -72,15 +72,18 @@ node tools/proto/remote-servers.mjs
 
 # The render protocol's wire format, both directions, checked against the bytes
 # the SERVER's own code emitted (protocol/vectors.json in Docker-BrowserForWP).
-# Must print "91/91 checks passed". It is the only statement of the protocol that
-# neither implementation wrote, which is why a client-side typo in a field offset
-# is caught here rather than as a garbled screen on a phone.
+# Must print "100/100 checks passed". It is the only statement of the protocol
+# that neither implementation wrote, which is why a client-side typo in a field
+# offset is caught here rather than as a garbled screen on a phone. When the
+# server regenerates its vectors, the copy in protocol/ is replaced in the SAME
+# commit, or this referee passes while the device is wrong.
 node tools/proto/remote-protocol.mjs
 
-# The input path: the hidden field that owns the soft keyboard, the gate that
-# serialises writes to the stream, the rotation that must move the server's
-# viewport AND this device's mapping, and the key names the keys bar offers.
-# Must print "7/7 remote-input checks passed". `--probe` plants each defect it
+# The input path: the hidden field that owns the soft keyboard and what is
+# allowed to raise it, the gate that serialises writes to the stream, the
+# rotation that must move the server's viewport AND this device's mapping, and
+# the key names the keys bar offers. Must print "11/11 remote-input checks
+# passed". `--probe` plants each defect it
 # exists to catch and requires the matching check to refuse it: a check nobody
 # has seen fail is decoration, and this repository has shipped decoration twice.
 node tools/proto/remote-input.mjs
@@ -88,7 +91,7 @@ node tools/proto/remote-input.mjs --probe
 
 # The engine-choice rule: what the automatic fallback decides, and the row that
 # matters most — an absent measurement is never grounds for switching engines.
-# Must print "34/34 checks passed".
+# Must print "38/38 checks passed".
 node tools/proto/engine-choice.mjs
 
 # The shell and delivery guards that arrived with the merged browser shell.
@@ -172,17 +175,25 @@ python3 tools/make_logo.py
 # can see the two things MSBuild is blind to: the project type GUIDs in
 # BrowserForWP.sln and the flavour property's name appearing ahead of its
 # element in a .vbproj (the factory locates that property by scanning the file
-# as TEXT). Must print "Build: 7 succeeded, 0 failed", with only WMC9999 and no
-# "not installed" line. A solution with the flavour GUID there instead loads
-# NOTHING -- "Build: 0 succeeded or up-to-date, 0 failed, 0 skipped".
-prlctl exec "{66a2f493-162c-4b3f-ba40-0a26020cc818}" cmd /c \
-    "cd /d C:\Mac\Home\Documents\BrowserForWP && ""C:\Program Files (x86)\Microsoft Visual Studio 12.0\Common7\IDE\devenv.com"" BrowserForWP.sln /build ""Debug|ARM"""
+# as TEXT). Must print "seven projects loaded and built" and "DEVENV_EXIT=0",
+# with only WMC9999 and no "not installed" line. A solution with the flavour GUID
+# there instead loads NOTHING -- "Build: 0 succeeded or up-to-date".
+#
+# It is a .cmd IN THE GUEST and not a command line, and that is a Round 14
+# correction: the one-liner this used to be does not survive the trip. `cmd /c`
+# reaches the guest with the argument already split, so the quotes around
+# `C:\Program Files (x86)\...` and around `"Debug|ARM"` are gone before devenv
+# sees them, and the host shell cannot re-add them through eval-style escaping.
+# The file has no quoting to lose.
+prlctl exec "{66a2f493-162c-4b3f-ba40-0a26020cc818}" "cmd.exe" "/c" \
+    "C:\Mac\Home\Documents\BrowserForWP\tools\vm-devenv.cmd"
 ```
 
 `devenv` rewrites the projects it opens — a BOM, CRLF line endings and a
 `<Folder Include="My Project\" />` item appear in whichever `.vbproj` files it
 touched. Revert those with `git checkout --` before committing, or a run that
-meant only to change the solution will also rewrite four project files.
+meant only to change the solution will also rewrite four project files. (The
+Round 14 run left the tree clean, which is luck of ordering and not a guarantee.)
 
 Those vectors also produce `tests/BrowserForWP.Crypto.Tests/Vectors.generated.vb`.
 That file is **generated** — never edit it by hand; regenerate it with
@@ -913,13 +924,15 @@ the interface, so the shell wires whichever engine it built and therefore knows
     (no token for it exists here, and no Docker on this host), so its reachability
     and its identity are unverified -- and the channel is still unpinned
     (item 12).
-17. **The page never tells the phone that a field took focus.** Nothing in the 23
-    message types says "focus moved", so the client cannot know whether a tap
-    landed on a text box, and **the soft keyboard therefore comes up on every
-    tap** — including on a link and on empty space. Fixing it is a new message in
-    this protocol, in `Docker-BrowserForWP` and in the vectors: worth doing, and
-    not a change to smuggle into the client. See the plan
-    `docs/superpowers/plans/2026-09-29-remote-input-path.md`.
+17. **CLOSED in Round 14 — the page tells the phone where its focus is.** This
+    item used to be the report: nothing in the 23 message types said "focus
+    moved", so the client could not know whether a tap landed on a text box, and
+    **the soft keyboard came up on every tap** — including on a link, a button
+    and empty space. `FOCUS = 0x27` is now a sealed one-byte message that the
+    server sends when the answer CHANGES, and `RemoteScreen.SetPageFocus` is the
+    only thing that raises the keyboard: a tap is not a request to type. Two
+    repositories moved in one commit, with the vectors. What the message is not
+    is the *kind* of field — see item 20.
 18. **The `KEY` message carries a modifier byte the server ignores.**
     `browser.js` reads `{ key, text }` and drops `{ modifiers }`, so Shift+Tab and
     Control+Enter are not expressible. The shell offers neither, and a button that
@@ -929,6 +942,21 @@ the interface, so the shell wires whichever engine it built and therefore knows
     `tools/proto/remote-input.mjs` to names the server can press and to labels in
     both languages — and no handset has drawn it. It is one more row of § "The
     remote engine, verified by hand" that is blank.
+20. **The keyboard rises on a CHANGE of answer, which leaves two cases out.**
+    The server reports on a change, so tapping the SAME text field again after
+    dismissing the keyboard by hand produces no message and the keyboard stays
+    down. And a page that focuses a field by itself — autofocus, a search box, a
+    dialog that opens with the cursor in it — raises nothing until the person
+    touches something. Both are the same missing binding: the page's own
+    `focusin`, reported through an exposed function, which is the one part of
+    `FOCUS` that cannot be exercised on this host at all (it needs Playwright and
+    a browser, neither installed; see the notes in `Docker-BrowserForWP`).
+    Raising the keyboard optimistically on every tap is tempting and is exactly
+    the defect item 17 closed. The type of field (password, email, number), which
+    would let the phone pick an `InputScope` keyboard layout, is deliberately not
+    in the message either: it cannot be confirmed without a handset, and the
+    decoders reject trailing bytes, so adding it later costs a protocol change in
+    both repositories plus the vectors.
 
 ### Error taxonomy
 
@@ -1557,7 +1585,9 @@ reason for a server that is not usable -- and both mutations are refused. A mirr
 that drifts reports green for behaviour the VB no longer has; that sentence is in
 this file already, and this round is the first time it was earned twice.
 
-**Verified:** `engine-choice.mjs` 34/34 with two mutations refused,
+**Verified:** `engine-choice.mjs` **38/38**, not the 34/34 this sentence recorded
+when the round was written — the number in the document was never the number the
+referee in that commit prints, and Round 14 measured it. Two mutations refused,
 `remote-servers.mjs` 24/24, `core-logic.mjs` 72 assertions, `check-vb.mjs` 16 groups
 over 17 categories and 0 finding(s), the other seventeen referees unchanged, six
 configurations `BUILD_EXIT=0` on the phone's toolchain, `devenv.com` loading and
@@ -1570,6 +1600,109 @@ server falls back with the right words on screen: all of it is in the table abov
 unrun. The default is also not exercised against the real server
 (`34.132.106.149`): no device token exists for this host, and Docker is not
 installed here, so nothing in this round has ever spoken to it.
+
+### Round 14 — the keyboard rises only on a field that takes text
+
+**Asked for:** the soft keyboard must come up on a text field and stay down
+everywhere else. Deferred item 17, and the reason it was deferred is that it cannot
+be fixed on the client: `RemoteScreen.OnTapped` focused its hidden field because
+that was the only trigger it had, and *whether a tap landed on something that takes
+text* is a fact about the page — which is on the server.
+
+**The message, and why it is one byte.** `FOCUS = 0x27`, server to client, sealed,
+`u8 editable`. Not `{ editable, fieldType }`: the *kind* of field (password, email,
+number) would let the phone choose an `InputScope` soft-keyboard layout, and that is
+the one part of this change that **cannot be checked without a handset**. The
+decoders reject trailing bytes on both sides, so adding the field later costs a
+protocol change in two repositories plus the vectors — which is the honest price,
+and the reason it is a numbered gap (item 20) rather than a field nobody reads.
+
+**Where the server decides it.** `src/browser.js` gains `focus()`: one
+`page.evaluate` answering whether `document.activeElement` is a text-bearing
+`input`, a `textarea`, or `isContentEditable`. `src/session.js` gains
+`_reportFocus()`: ask, compare with the last byte sent, and write only when it
+changed — a `FOCUS` per keystroke would spend the channel on a byte that did not
+move. It is asked after `TAP`, after `KEY` (Tab moves focus, so does Escape) and
+when a load completes, where the document's focus is gone whatever the previous
+page said. Navigation resets the last answer to "not asked yet", so the first
+report after a page change is always sent — even when it repeats the previous byte,
+because it is a different document's fact. A browser with no `focus()` leaves the
+session working and silent.
+
+**Where the client obeys it.** `RemoteScreen.SetPageFocus(editable)` is the only
+code that raises the keyboard. `False` **disables** the hidden `TextBox`: WinRT has
+no `Unfocus()`, and disabling the focused control is the one state change that both
+drops the focus and closes the keyboard. `True` re-enables it *before* focusing,
+because the message that asks for focus is often the one after the message that took
+it away. `FocusKeyboard()` — the rotation path — is a no-op unless the page said so,
+and the rotation call site now asks `WantsKeyboard` (the page's answer) instead of
+`HasKeyboardFocus` (the field's state): a re-arranged tree reports `Unfocused`
+whether or not the person was halfway through a sentence, so the old question would
+have closed a keyboard nobody dismissed. `OnTapped` no longer touches focus at all,
+and the keys bar is unaffected — Tab, Escape and the arrows are `KEY` messages, not
+the soft keyboard.
+
+**The defect this round found is a syntax error, and the suite found it.** The first
+version of the server change wrote `await this._reportFocus()` inside
+`_onBrowserEvent`, which was not `async` — `SyntaxError: Unexpected reserved word`,
+and because a module that cannot be parsed takes its whole test file with it,
+`session.test.js` reported **1 test, 1 failure** rather than one wrong behaviour. It
+had been written by reading the message and not by running it. `_onBrowserEvent` is
+now `async`, with the reason in its comment: the event source does not await it, and
+the handling up to the first `await` is synchronous, so the messages that need no
+answer keep the order they were emitted in.
+
+**And the referee's own blind spot, again.** The helper that reads the FOCUS
+messages out of the transcript opened every frame in it, including the plaintext
+`HELLO_ACK` — and the sealer's replay rule refused it (`seq 0 after 0`), which then
+refused the *second* reading of the same frame too. Two readings of a transcript want
+two `Opener`s, not a second message. Both were caught by running it.
+
+**Three recorded numbers did not match their artefacts, and running the commands is
+what said so.** `tools/proto/engine-choice.mjs` prints `38/38` and had been written
+down as 34/34 in Round 13's record and in the verification table here;
+`tools/proto/fetch-rules.mjs` prints `31/31` and the skill table said 25/25 since the
+pin-enforcement check was added in `03734d1`. Both are corrected in place with the
+correction marked, because a document that tells a reader to expect a number the
+tool does not print is a document that teaches them to ignore it. This round's own
+numbers were then taken from the terminal rather than from this file.
+
+**And the IDE oracle was not runnable as printed.** The command for `devenv.com` in
+this file was a host one-liner with `""`-escaped inner quotes, and `cmd /c` cannot
+receive it: the argument reaches the guest already split, the quotes around
+`C:\Program Files (x86)\...` and `"Debug|ARM"` are gone before devenv sees them, and
+the guest answers `"""C:\Program` is not recognized as an internal or external
+command`. It is now `tools/vm-devenv.cmd`, which has no quoting to lose, asserts its
+verdict rather than relaying devenv's exit code, and exits 1 on a project the IDE
+refuses. Writing it also measured two things the one-liner never would have: the
+summary says **`Rebuild All: 7 succeeded, 0 failed, 0 skipped`** and not `Build: 7
+succeeded` (the wording follows the verb), and a plain `/build` of a clean tree
+prints **no `Build started` line for a project it considers current**, so an oracle
+that counted those lines reported `6 loaded, expected 7` against a tree that was
+more correct than the run before it. `/Rebuild` is what makes the count exact.
+
+**The client's half is a separate commit in a separate repository, and the vectors
+are the join.** `protocol/vectors.json` in the client is the server's own file, copied
+in the same round it was regenerated: 23 payloads and 21 sealed frames became 24 types
+with `FOCUS_EDITABLE` and `FOCUS_NONE` pinned. `remote-protocol.mjs` refuses a client
+whose order or count has drifted, because that failure is a garbled screen with no
+error anywhere.
+
+**Verified:** `npm test` in `Docker-BrowserForWP` 148/148 (five new session cases:
+a tap reports the browser's answer, an unchanged answer is not sent again, Tab and a
+completed load re-report, a navigation makes the next report unconditional, a browser
+without `focus()` is silent and not fatal); `remote-protocol.mjs` 100/100 (was 91);
+`remote-input.mjs` 11/11 with all 12 planted defects refused (was 7/7); `check-vb.mjs`
+16 groups over 17 categories, 0 finding(s); six configurations `BUILD_EXIT=0`; `devenv.com`
+loading all seven projects.
+**Not verified:** the four rows this round adds to § "The remote engine, verified by
+hand" (a tap on a field, a tap that must not raise one, a rotation with nothing
+editable, and the same field after a manual dismissal) — they are blank, because
+there is still no handset. `browser.js`'s `focus()` needs Playwright and a browser,
+neither installed here, so its logic is exercised only through the session's fake
+browser; that part of the change has never been near a live page. Item 20 is the
+other half: a page that focuses a field by itself, and a re-tap on a field whose
+answer has not changed, both still raise nothing.
 
 ## The loop
 
@@ -1602,14 +1735,15 @@ What is and is not covered:
 | `tests/BrowserForWP.Crypto.Tests/` (`Vectors.generated.vb` + `VectorsSmokeTests.vb`) | Generated VB constants from those same vectors, plus length/shape checks. | **Compiled by the guest build; never executed.** |
 | `tests/BrowserForWP.Core.Tests/CoreLogicTests.vb` | Address normalisation, tab state, session/UA, settings, history, favourites, pin normalisation, hostname wildcards, language matching. | **Compiled by the guest build; never executed.** |
 | `tools/proto/core-logic.mjs` | A transliteration of `CoreLogicTests.vb`. 72 assertions, exit 1 on failure. | `node`, on any machine. **This is what actually runs those assertions.** |
-| `tools/proto/remote-input.mjs` | The remote input path as source contracts: one hidden `TextBox` built once, the `SemaphoreSlim` gate over every write to the stream, the rotation that moves both viewports and sends `RESIZE`, the eight key names the keys bar offers, and that every label has a key in both `.resw` files. Seven checks, plus `--probe`, which plants each defect and requires its check to refuse it. | `node`, on any machine. |
-| `tools/proto/remote-protocol.mjs` | The render protocol's wire format: header, every encoder and decoder, the frame splitter, and the AEAD seal both ways, checked byte-for-byte against `protocol/vectors.json` — which the SERVER's own code produced. The only statement of the protocol that neither implementation wrote. 91 checks. | `node`, on any machine. |
+| `tools/proto/remote-input.mjs` | The remote input path as source contracts: one hidden `TextBox` built once, the `SemaphoreSlim` gate over every write to the stream, the rotation that moves both viewports and sends `RESIZE`, the eight key names the keys bar offers, that every label has a key in both `.resw` files, and — since Round 14 — that **a tap is not a request to type** and that the soft keyboard is raised only by the page's own answer, which the engine must route to the screen. Eleven checks, plus `--probe`, which plants each defect (twelve mutations) and requires its check to refuse it. | `node`, on any machine. |
+| `tools/proto/remote-protocol.mjs` | The render protocol's wire format: header, every encoder and decoder, the frame splitter, and the AEAD seal both ways, checked byte-for-byte against `protocol/vectors.json` — which the SERVER's own code produced. The only statement of the protocol that neither implementation wrote. 100 checks, including both values of `FOCUS` and its refusal of a third. | `node`, on any machine. |
 | `tools/proto/remote-servers.mjs` | `RemoteServers.vb`: url normalisation, the primary/secondary order, duplicate collapsing, and the source contract that Core holds resource keys and not prose. | `node`, on any machine. |
 | `tools/proto/engine-choice.mjs` | The `EngineChoice` decision table, plus the source contract around it: the constants by name, and the reasons as resource keys rather than sentences. | `node`, on any machine. |
 | `tools/check-vb.mjs` | 17 categories / 16 check groups over every `.vb`, `.vbproj`, `.xaml` and `.resw`, including every `{ThemeResource}` key, every project's flavour GUID and the factory GUID and separators of every `BrowserForWP.sln` entry, (group 13) doc-comment structure, (group 15) every privileged API name and every manifest capability that would ask the platform for something it cannot grant, (group 16) every API whose capability the manifest fails to declare, and (group 17) every declaration that names a VB keyword. | `node`, on any machine. |
 | `tools/keyword-probe/`, `tools/keyword-probe.cmd` | One `Dim <word> As Integer` per candidate, compiled by the real vbc, so group 17's list is measured rather than quoted. Batched, with a per-batch sentinel, because vbc 12 stops after about a hundred errors **with no message** and the first single-file version read that truncation as "legal". | `bash`, with the guest reachable. |
 | `tools/wp81-theme-keys.sh` | Regenerates `tools/wp81-theme-keys.txt`, the 523 theme-resource keys Windows Phone 8.1 defines, read from the guest's design dictionaries. | `bash`, with the guest reachable. |
 | `tools/vm-build.cmd` | The real compiler, and the arbiter of pass/fail. | The Windows guest. |
+| `tools/vm-devenv.cmd` | The IDE's own project system, via `devenv.com /rebuild`, run in the guest. The only oracle for the two things `MSBuild` is blind to: a `.sln` naming an unregistered project factory, and a `.vbproj` whose flavour property is named ahead of its own element. Asserts `Rebuild All: 7 succeeded, 0 failed, 0 skipped` and no `not installed` line, and exits 1 otherwise. | The Windows guest. |
 | `tools/wmc9999-probe.sh` | Build-diagnostic characterisation and XAML output invariance. | `bash`, on the host. |
 
 **"Compiled" is still not "tested", and the distinction is not academic.**
@@ -1646,23 +1780,28 @@ Ran it: 2026-09-29. Device: none available. Server: none reachable.
 | Type a url in the address bar | The page is drawn by the server. | |
 | Tap a link | The navigation happens on the server and a new frame arrives. | |
 | Scroll | The scroll happens server-side; the frame follows. | |
+| Tap a text field | The server reports focus on a field that takes text, and the keyboard rises — a moment after the finger lifts, because the answer comes from the page. | |
+| Tap a link, a button, then empty space | The keyboard does **not** rise on any of the three, and it goes back down if it was up. | |
 | Type in a form field | The keystrokes cross, the text appears in the frame. | |
+| Dismiss the keyboard by hand, then tap the same field again | The keyboard does **not** come back: the server reports on a change, and this is item 20, not a surprise. | |
 | Press the phone's back button | The shell's back goes to the previous page. | |
 | Stop the server, then navigate | The secondary is used, and the status line says so. | |
 | Play a page with sound | Sound, if `WITH_AUDIO=1` and PulseAudio are running. | |
 | Turn the phone while a field has focus | The keyboard stays up, the picture fills the new shape, and a tap still lands where the finger is. | |
-| Press Tab in the keys bar | The next field on the page takes focus, and the frame shows it. | |
+| Turn the phone on a page with nothing editable | No keyboard appears: the rotation asks the page, not the field. | |
+| Press Tab in the keys bar | The next field on the page takes focus, the frame shows it, and the keyboard follows only if the field it landed on takes text. | |
 
 **What this round does verify**, and with what:
 
 | Claim | Evidence |
 | --- | --- |
-| The input path holds its contracts (one field, gated writes, rotation, key names) | `node tools/proto/remote-input.mjs` → `7/7`, and `--probe` refuses all 7 planted defects |
-| The wire format reproduces the server's own bytes | `node tools/proto/remote-protocol.mjs` → `91/91 checks passed` |
+| The input path holds its contracts (one field, gated writes, rotation, key names, a tap that is not a request to type, a keyboard the page controls) | `node tools/proto/remote-input.mjs` → `11/11`, and `--probe` refuses all 12 planted defects |
+| The wire format reproduces the server's own bytes, including both values of `FOCUS` | `node tools/proto/remote-protocol.mjs` → `100/100 checks passed` |
 | The primary/secondary rule, url normalisation and the readiness rule hold | `node tools/proto/remote-servers.mjs` → `24/24`; `node tools/proto/core-logic.mjs` → `72 assertions, 0 failure(s)` |
-| The engine decision table holds, including the hosted default and its fallback | `node tools/proto/engine-choice.mjs` → `34/34`, and the two mutations that remove the readiness branch are refused |
+| The engine decision table holds, including the hosted default and its fallback | `node tools/proto/engine-choice.mjs` → `38/38`, and the two mutations that remove the readiness branch are refused |
 | No mechanical defect of the seventeen checked kinds | `node tools/check-vb.mjs` → `16 check groups run, 0 finding(s)` |
 | It compiles, for real, on the phone's toolchain | Six configurations, `BUILD_EXIT=0`: Debug/ARM, Debug/x86, Release/ARM, Release/x86 as solution builds, and Debug/Release as `Any CPU` app-project builds. Only the two deliberate `BC40000` warnings. |
+| The IDE's own project system still accepts the solution | `tools\vm-devenv.cmd` in the guest → `seven projects loaded and built`, `Rebuild All: 7 succeeded, 0 failed, 0 skipped`, `DEVENV_EXIT=0` |
 
 **Three defects this round found**, two by the compiler and one by reading the
 file being edited. All three had passed every checker in the repository.
@@ -1706,6 +1845,8 @@ capture end needs a sound card; see the notes in `Docker-BrowserForWP`).
 - [ ] `node tools/proto/core-logic.mjs` → `core-logic checks, 0 failure(s)`
 - [ ] `tools\vm-build.cmd /t:Rebuild` in the guest → `BUILD_EXIT=0`, no `BC`
       errors, no warnings
+- [ ] `tools\vm-devenv.cmd` in the guest → `DEVENV_EXIT=0`, seven projects
+      loaded, no `not installed` line
 - [ ] `node tools/proto/w25519.mjs` → `18 checks, 0 failure(s)`
 - [ ] `node tools/proto/tls13.mjs example.com` → `31 checks, 0 failure(s)`
 - [ ] `RUNS=4 bash tools/wmc9999-probe.sh` → `distinct XBF hash pairs across 12 runs: 1`

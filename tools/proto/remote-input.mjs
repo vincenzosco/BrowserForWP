@@ -17,7 +17,10 @@
 //   * every key name the shell offers is a name the server can press;
 //   * every button label has a resource key in BOTH languages, because
 //     check-vb.mjs group 6 only compares the two files with each other and an
-//     empty label is an empty button, not a missing one.
+//     empty label is an empty button, not a missing one;
+//   * a TAP is not a request to type, and the soft keyboard is raised only by
+//     the page's own answer (the FOCUS message), because the failure this
+//     replaced was a keyboard over every link on every tap.
 //
 // RUNNING IT
 //   node tools/proto/remote-input.mjs          # report, exit 1 on any failure
@@ -133,6 +136,45 @@ const CHECKS = [
       return buttons.every((b) => s[PAGE].includes(b));
     },
   },
+  {
+    name: 'a tap is not a request to type',
+    why: 'focusing the hidden field on every tap is exactly the defect FOCUS exists ' +
+         'to remove: the keyboard covers half the page on links, buttons and empty ' +
+         'space, and the picture is what the person was trying to read',
+    run: (s) => {
+      const tapped = /Private Sub OnTapped\([\s\S]*?\r?\n        End Sub/.exec(s[SCREEN]);
+      return Boolean(tapped) && !/\.Focus\(/.test(tapped[0]);
+    },
+  },
+  {
+    name: 'the field is enabled before it is focused, and disabled to let go',
+    why: 'a previous FOCUS message may have disabled the field, so focusing it without ' +
+         're-enabling it is a silent no-op; and WinRT has no Unfocus(), so not ' +
+         'disabling it leaves the keyboard up on a page that says nothing is editable',
+    run: (s) => {
+      const body = /Public Sub SetPageFocus\([\s\S]*?\r?\n        End Sub/.exec(s[SCREEN]);
+      if (!body) return false;
+      const enabledAt = body[0].indexOf('_ime.IsEnabled = True');
+      const focusAt = body[0].indexOf('_ime.Focus(FocusState.Programmatic)');
+      const disabledAt = body[0].indexOf('_ime.IsEnabled = False');
+      return enabledAt > 0 && focusAt > enabledAt && disabledAt > focusAt;
+    },
+  },
+  {
+    name: 'the keyboard belongs to the page, not to the rotation',
+    why: 'a re-arranged tree drops focus, so asking the FIELD after a rotation closes a ' +
+         'keyboard nobody dismissed; and a rotation on a page with nothing editable ' +
+         'must not raise one',
+    run: (s) => /Public Sub FocusKeyboard\(\)[\s\S]*?If Not _pageFocusEditable Then Return/.test(s[SCREEN]) &&
+                /Private Sub OnWindowSizeChanged[\s\S]*?_screen\.WantsKeyboard/.test(s[ENGINE]) &&
+                !/_screen\.HasKeyboardFocus/.test(s[ENGINE]),
+  },
+  {
+    name: 'the server\'s FOCUS message reaches the screen',
+    why: 'a message decoded and dropped is a keyboard that never rises, which looks ' +
+         'exactly like a server that never sent anything',
+    run: (s) => /Case RemoteMessageType\.Focus[\s\S]*?RemoteMessages\.DecodeFocus\(payload\)[\s\S]*?_screen\.SetPageFocus\(/.test(s[ENGINE]),
+  },
 ];
 
 // ── The negative control ────────────────────────────────────────────────────
@@ -148,6 +190,11 @@ const MUTATIONS = [
   { check: 4, what: 'a key name the protocol cannot express', apply: (s) => { s[PAGE] = s[PAGE].replace('SendRemoteKey("Tab")', 'SendRemoteKey("Shift+Tab")'); } },
   { check: 5, what: 'a label whose key exists in neither file', apply: (s) => { s[PAGE] = s[PAGE].replace('Localizer.Get("KeyTab")', 'Localizer.Get("KeyTabMissing")'); } },
   { check: 6, what: 'a button the code-behind never mentions', apply: (s) => { s[PAGE] = s[PAGE].replace(/KeyRightButton/g, 'RightArrowButton'); } },
+  { check: 7, what: 'a tap that raises the keyboard again', apply: (s) => { s[SCREEN] = s[SCREEN].replace(/(Private Sub OnTapped\([\s\S]*?If _raiseInput Is Nothing Then Return\r?\n)/, '$1\n            _ime.Focus(FocusState.Programmatic)\n'); } },
+  { check: 8, what: 'a negative answer that enables the field anyway', apply: (s) => { s[SCREEN] = s[SCREEN].replace('_ime.IsEnabled = False', '_ime.IsEnabled = True'); } },
+  { check: 9, what: 'a rotation that raises the keyboard regardless', apply: (s) => { s[SCREEN] = s[SCREEN].replace(/If Not _pageFocusEditable Then Return\r?\n/, ''); } },
+  { check: 9, what: 'a rotation that asks the field instead of the page', apply: (s) => { s[ENGINE] = s[ENGINE].replace('_screen.WantsKeyboard', '_screen.HasKeyboardFocus'); } },
+  { check: 10, what: 'a FOCUS message decoded and dropped', apply: (s) => { s[ENGINE] = s[ENGINE].replace(/\r?\n                    Case RemoteMessageType\.Focus[\s\S]*?_screen\.SetPageFocus\(focused\.Editable\)/, ''); } },
 ];
 
 function main() {

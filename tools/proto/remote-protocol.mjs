@@ -165,6 +165,23 @@ const ack = VECTORS.payloads.find((entry) => entry.name === 'ACK');
 check('ACK is a bare u32 sequence number',
   new Writer().u32(7).build().toString('hex') === ack.hex);
 
+// FOCUS is the one byte the soft keyboard is gated on, and both of its values are
+// pinned: a client that only ever saw the 1 would look correct on a search box
+// and put a keyboard over every link.
+const focusYes = VECTORS.payloads.find((entry) => entry.name === 'FOCUS_EDITABLE');
+const focusNo = VECTORS.payloads.find((entry) => entry.name === 'FOCUS_NONE');
+check('FOCUS says "this takes text" as the server says it',
+  new Writer().u8(1).build().toString('hex') === focusYes.hex,
+  `ours 01, server ${focusYes.hex}`);
+check('FOCUS says "this does not" as the server says it',
+  new Writer().u8(0).build().toString('hex') === focusNo.hex,
+  `ours 00, server ${focusNo.hex}`);
+check('the VB type constant is the server\'s 0x27',
+  /Public Const Focus As Byte = &H27/.test(code));
+check('the VB FOCUS decoder refuses a value that is neither 0 nor 1',
+  /If raw > 1 Then/.test(code),
+  'truthiness would accept an extension nobody versioned, and raise a keyboard on a byte it does not understand');
+
 // ── The source contract: the field order the VB must have ───────────────────
 // Each list is the order the VB encoder must walk, taken from the server's own
 // encoder. This is what catches a field added on one side only.
@@ -184,6 +201,7 @@ const ORDER = {
   EncodeLoadState: ['U8', 'Str'],
   EncodeFindResult: ['U8', 'U32'],
   EncodeAudio: ['U8', 'Str'],
+  EncodeFocus: ['U8'],
 };
 
 for (const [name, expected] of Object.entries(ORDER)) {
@@ -198,14 +216,14 @@ for (const [name, expected] of Object.entries(ORDER)) {
 
 // ── The decoders the client needs, one per server message ───────────────────
 for (const name of ['DecodeHelloAck', 'DecodeTitle', 'DecodeUrl', 'DecodeLoadState',
-  'DecodeFramePayload', 'DecodeFindResult', 'DecodeAudio', 'DecodeError']) {
+  'DecodeFramePayload', 'DecodeFindResult', 'DecodeAudio', 'DecodeError', 'DecodeFocus']) {
   check(`the VB source has ${name}`, new RegExp(`Function ${name}\\(`).test(code));
 }
 
 // Trailing bytes are an error rather than an ignored extension, or a layout
 // difference between the two ends is silent.
 const decoderCount = (code.match(/reader\.RequireEnd\(\)/g) || []).length;
-check('every decoder rejects trailing bytes', decoderCount >= 8,
+check('every decoder rejects trailing bytes', decoderCount >= 9,
   `found ${decoderCount} RequireEnd call(s)`);
 
 // ── The frame reader ────────────────────────────────────────────────────────

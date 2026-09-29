@@ -324,6 +324,15 @@ Namespace Engine
                     Case RemoteMessageType.Audio
                         Dim sound As RemoteAudio = RemoteMessages.DecodeAudio(payload)
                         RaiseEvent Audio(sound.Playing, sound.Url)
+                    Case RemoteMessageType.Focus
+                        ' The page's focus, and therefore whether the soft keyboard
+                        ' belongs on screen. It arrives AFTER the tap that caused it,
+                        ' so the keyboard rises a moment after the finger lifts --
+                        ' which is the price of asking somebody who can actually
+                        ' see the field. Raising it optimistically instead is what
+                        ' put a keyboard over every link in the first place.
+                        Dim focused As RemoteFocus = RemoteMessages.DecodeFocus(payload)
+                        _screen.SetPageFocus(focused.Editable)
                     Case RemoteMessageType.Title, RemoteMessageType.FindResult, RemoteMessageType.Pong
                         ' Accepted and not yet shown. Every one of them is a message
                         ' this client knows how to read, which is the point: an
@@ -503,9 +512,12 @@ Namespace Engine
         Private Sub OnWindowSizeChanged(sender As Object, e As Windows.UI.Core.WindowSizeChangedEventArgs)
             If _channel Is Nothing OrElse Not _channel.IsOpen Then Return
 
-            Dim hadKeyboard As Boolean = _screen.HasKeyboardFocus
+            ' The PAGE's answer, not the hidden field's focus state: the tree was
+            ' just re-arranged, and the field reports Unfocused whether or not the
+            ' person was halfway through a sentence.
+            Dim wantsKeyboard As Boolean = _screen.WantsKeyboard
             ApplyViewport()
-            If hadKeyboard Then _screen.FocusKeyboard()
+            If wantsKeyboard Then _screen.FocusKeyboard()
 
             Send(RemoteMessageType.Resize,
                  RemoteMessages.EncodeResize(_viewportWidth, _viewportHeight, _devicePixelRatio))

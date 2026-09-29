@@ -157,6 +157,18 @@
       "hex": "01020304"
     },
     {
+      "name": "FOCUS_EDITABLE",
+      "type": 39,
+      "sealed": true,
+      "hex": "01"
+    },
+    {
+      "name": "FOCUS_NONE",
+      "type": 39,
+      "sealed": true,
+      "hex": "00"
+    },
+    {
       "name": "FRAME_FULL",
       "type": 35,
       "sealed": true,
@@ -369,16 +381,40 @@
       "frameHex": "b7520126000000140000001100000000581f7ac06c84251e3fdc32dbd13c8f4d806de224"
     },
     {
-      "name": "frame_full-seq18",
+      "name": "focus_editable-seq18",
       "direction": "client-to-server",
-      "type": 35,
-      "typeName": "FRAME",
+      "type": 39,
+      "typeName": "FOCUS",
       "seq": 18,
       "keyHex": "05b24cba02f7c44169843bb357a7dfd348901dada2750bc4d766ca9deeaf6ec6",
       "nonceHex": "000000000000000000000012",
-      "aadHex": "b7520123000000240000001200000000",
+      "aadHex": "b7520127000000110000001200000000",
+      "plaintextHex": "01",
+      "frameHex": "b7520127000000110000001200000000f1a9bc0e07f92e64cb295bce0d350261e9"
+    },
+    {
+      "name": "focus_none-seq19",
+      "direction": "client-to-server",
+      "type": 39,
+      "typeName": "FOCUS",
+      "seq": 19,
+      "keyHex": "05b24cba02f7c44169843bb357a7dfd348901dada2750bc4d766ca9deeaf6ec6",
+      "nonceHex": "000000000000000000000013",
+      "aadHex": "b7520127000000110000001300000000",
+      "plaintextHex": "00",
+      "frameHex": "b7520127000000110000001300000000bce7a2f416db8d4f9f3e0c1986355b7a33"
+    },
+    {
+      "name": "frame_full-seq20",
+      "direction": "client-to-server",
+      "type": 35,
+      "typeName": "FRAME",
+      "seq": 20,
+      "keyHex": "05b24cba02f7c44169843bb357a7dfd348901dada2750bc4d766ca9deeaf6ec6",
+      "nonceHex": "000000000000000000000014",
+      "aadHex": "b7520123000000240000001400000000",
       "plaintextHex": "010100010000000001e0032000000004ffd8ffd9",
-      "frameHex": "b7520123000000240000001200000000f106a8eb27af0fcf7fafc6663f48127d1126594bbf82edda977bf824cf938dd5b7f9a220"
+      "frameHex": "b752012300000024000000140000000083d3b3772cccd836e9f7c0e881b63493c3b41702bb201a2e6232c5b0cfd6015b589f9ba8"
     },
     {
       "name": "title-s2c-seq1",

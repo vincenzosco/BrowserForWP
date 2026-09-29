@@ -435,6 +435,7 @@ Namespace Engine
             Public Const FindResult As Byte = &H24
             Public Const Audio As Byte = &H25
             Public Const Pong As Byte = &H26
+            Public Const Focus As Byte = &H27
 
             Private Sub New()
             End Sub
@@ -645,6 +646,30 @@ Namespace Engine
             End Function
 
             ''' <summary>
+            ''' One byte: whether the page's focused element accepts text. This is the
+            ''' question the soft keyboard is gated on, and it has to come from the
+            ''' server -- the page is over there, and this device can see the picture
+            ''' and not the caret.
+            '''
+            ''' 0 AND 1 ONLY, exactly as the server's own decoder insists. "Non-zero"
+            ''' would accept a third value from a build that invented an extension
+            ''' without a version, and the screen would then raise a keyboard on a
+            ''' byte it does not understand.
+            ''' </summary>
+            Public Shared Function DecodeFocus(payload As Byte()) As RemoteFocus
+                Dim reader As New RemoteReader(payload)
+                Dim raw As Byte = reader.U8()
+                reader.RequireEnd()
+                If raw > 1 Then
+                    Throw New RemoteProtocolException(
+                        "focus.editable must be 0 or 1, got " & raw.ToString())
+                End If
+                Dim focus As New RemoteFocus()
+                focus.Editable = (raw = 1)
+                Return focus
+            End Function
+
+            ''' <summary>
             ''' A frame: a tile list rather than one rectangle, because the primitive
             ''' that produces them today hands back a whole viewport and a differ that
             ''' sends only what changed is the obvious next step. It costs two bytes
@@ -693,6 +718,18 @@ Namespace Engine
                 Dim writer As New RemoteWriter()
                 writer.U8(If(playing, CByte(1), CByte(0)))
                 writer.Str(url)
+                Return writer.Build()
+            End Function
+
+            ''' <summary>
+            ''' The server's message, written here so both ends of the protocol are
+            ''' stated in the same file and a field added on one side only is a
+            ''' failing referee rather than a garbled screen. This client forwards
+            ''' fingers; it never sends a focus message.
+            ''' </summary>
+            Public Shared Function EncodeFocus(editable As Boolean) As Byte()
+                Dim writer As New RemoteWriter()
+                writer.U8(If(editable, CByte(1), CByte(0)))
                 Return writer.Build()
             End Function
 
@@ -761,6 +798,13 @@ Namespace Engine
 
             Public Property Playing As Boolean
             Public Property Url As String
+
+        End Class
+
+        ''' <summary>Whether the page's focused element takes text. See DecodeFocus.</summary>
+        Public NotInheritable Class RemoteFocus
+
+            Public Property Editable As Boolean
 
         End Class
 
