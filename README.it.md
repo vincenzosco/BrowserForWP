@@ -104,6 +104,18 @@ serve riavviare: il server rilegge il registro quando il file cambia. Il wrapper
 non `node bin/bfwp-device.js`: l'immagine parte come root, e un registro scritto
 come root è un registro che il server stesso non riesce a leggere.
 
+Un server può anche esporre una **pagina di registrazione**, dove chi tiene il
+telefono chiede il token da solo — `BFWP_REGISTER_PORT` (predefinita 8445), sul
+loopback della macchina a meno che l'operatore non la pubblichi dietro un codice di
+accesso. Il token è lo stesso in entrambi i modi, e `docs/DEPLOY.md` nel repository
+del server spiega il tunnel e il codice.
+
+In ogni caso **un token appartiene al primo telefono che lo usa**: il server lo
+lega in quel momento e rifiuta ogni altro dispositivo che lo presenti, quindi per
+sostituire un telefono l'operatore deve prima eseguire `bfwp-device release <id>`.
+L'id dispositivo che il server stampa è il nome della voce nel registro, non
+qualcosa da digitare nel telefono, che genera il proprio.
+
 ### 3. Punta il telefono al server
 
 Sul telefono, **Impostazioni → Server**:
