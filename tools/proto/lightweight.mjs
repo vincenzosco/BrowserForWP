@@ -21,24 +21,24 @@ check('lite homepage default', settings.includes('lite.duckduckgo.com'));
 check('night/block/restore/session props',
   settings.includes('NightMode') && settings.includes('BlockTrackers') &&
   settings.includes('RestoreSession') && settings.includes('LastSessionTabs'));
-check('legacy google/bing migration',
-  settings.includes('google.') && settings.includes('bing.'));
-check('session tab cap', /MaxSessionTabs As Integer = 10/.test(settings));
+check('single search default, no migration',
+  !settings.includes('Property SearchTemplate') && !settings.includes('MigrateSearchTemplate'));
+check('session tab cap', /MaxSessionTabs As Integer = 6/.test(settings));
 
 const mainPage = read('BrowserForWP/MainPage.xaml.vb');
 check('no google search template', !mainPage.includes('google.com/search'));
 check('no bing search template', !mainPage.includes('bing.com/search'));
-check('duckduckgo lite offered', mainPage.includes('lite.duckduckgo.com'));
+check('duckduckgo lite is the search default', settings.includes('lite.duckduckgo.com'));
 check('tracker block enforced', mainPage.includes('ShouldBlock'));
 check('night mode applied', mainPage.includes('SetNightModeAsync'));
 check('private mode skips history', /PrivateMode[\s\S]{0,300}history/i.test(mainPage) || mainPage.includes('PrivateMode'));
 
 const history = read('BrowserForWP.Core/Storage/HistoryStore.vb');
-check('history capped at 100', /MaxEntries As Integer = 100/.test(history));
+check('history capped at 50', /MaxEntries As Integer = 50/.test(history));
 const favorites = read('BrowserForWP.Core/Storage/FavoritesStore.vb');
-check('favorites capped at 100', favorites.includes('100'));
+check('favorites capped at 50', /MaxEntries As Integer = 50/.test(favorites));
 const pins = read('BrowserForWP.Net/Tls13/PinStore.vb');
-check('pins capped at 50', pins.includes('50'));
+check('pins capped at 25', /MaxPins As Integer = 25/.test(pins));
 
 const engine = read('BrowserForWP.Core/Engine/TridentEngine.vb');
 check('find runner', engine.includes('FindInPageAsync'));

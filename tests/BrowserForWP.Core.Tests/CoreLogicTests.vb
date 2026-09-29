@@ -113,6 +113,39 @@ Namespace CoreTests
             Check(favorites.Contains("https://a.example/"), "fav contains")
             ran += 1
 
+            Dim saved As New SavedPages()
+            saved.Add("https://a.example/", "A", "hello world")
+            Check(saved.Count = 1, "saved add")
+            Dim savedAgain As New SavedPages()
+            savedAgain.Parse(saved.Serialize())
+            Check(savedAgain.Count = 1, "saved roundtrip")
+            ran += 1
+
+            Dim dial As New SpeedDial()
+            Check(dial.Add("https://a.example/", "A"), "dial add")
+            For dialIndex As Integer = 1 To 20
+                dial.Add("https://s" & dialIndex.ToString() & ".example/", "S")
+            Next
+            Check(dial.Count = SpeedDial.MaxSlots, "dial capped")
+            ran += 1
+
+            Dim sitePrefs As New SiteSettings()
+            Check(sitePrefs.GetSetting("Example.COM").TextSizePct = 100, "site default size")
+            sitePrefs.SetSetting("example.com", 500, True)
+            Dim gotBack = sitePrefs.GetSetting("example.com")
+            Check(gotBack.TextSizePct = 200, "site size clamped")
+            Check(gotBack.ImagesOff, "site images off")
+            ran += 1
+
+            Dim backupSections As New Dictionary(Of String, String)()
+            backupSections("settings") = "a=1"
+            Dim backupText As String = BackupManager.BuildBackup(backupSections)
+            Dim parsedSections As Dictionary(Of String, String) = Nothing
+            Check(BackupManager.TryParseBackup(backupText, parsedSections), "backup roundtrip")
+            Check(parsedSections("settings") = "a=1", "backup payload")
+            Check(Not BackupManager.TryParseBackup("garbage", parsedSections), "backup rejects garbage")
+            ran += 1
+
             Check(PinStore.NormalizeHost("Example.COM:443") = "example.com", "pin host normalize")
             Dim pins As New PinStore()
             pins.Add("Example.com", "abc123")

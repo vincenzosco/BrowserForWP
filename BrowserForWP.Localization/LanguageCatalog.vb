@@ -15,7 +15,7 @@ Namespace Localization
     Public NotInheritable Class LanguageCatalog
 
         ''' <summary>Supported tags. English first: it is the default and the fallback.</summary>
-        Private Shared ReadOnly SupportedTags As String() = {"en-US", "it-IT"}
+        Private Shared ReadOnly SupportedTags As String() = {"en-US", "it-IT", "de-DE", "fr-FR", "es-ES", "ja-JP"}
 
         Private Sub New()
         End Sub
@@ -64,6 +64,14 @@ Namespace Localization
             Select Case Normalize(tag)
                 Case "it-IT"
                     Return "Italiano"
+                Case "de-DE"
+                    Return "Deutsch"
+                Case "fr-FR"
+                    Return "Français"
+                Case "es-ES"
+                    Return "Español"
+                Case "ja-JP"
+                    Return "日本語"
                 Case "en-US"
                     Return "English"
                 Case Else

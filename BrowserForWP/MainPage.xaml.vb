@@ -16,6 +16,7 @@ Imports BrowserForWP.Net.Tls13
 Imports Windows.ApplicationModel.DataTransfer
 Imports Windows.Phone.UI.Input
 Imports Windows.Storage
+Imports Windows.Storage.Pickers
 Imports Windows.UI.Xaml
 Imports Windows.UI.Xaml.Controls
 Imports Windows.UI.Xaml.Input
@@ -36,10 +37,14 @@ Public NotInheritable Class MainPage
     Private ReadOnly _appSettings As New AppSettings()
     Private ReadOnly _historyStore As New HistoryStore()
     Private ReadOnly _favoritesStore As New FavoritesStore()
+    Private ReadOnly _savedPages As New SavedPages()
+    Private ReadOnly _sitePrefs As New SiteSettings()
+    Private ReadOnly _speedDial As New SpeedDial()
     Private ReadOnly _pinTable As New PinStore()
 
     Private _navigationToken As Object
-    Private _searchTemplates As String()
+    Private _injectedToken As Object
+    Private _settingsPopulated As Boolean = False
 
     ' The remote engine's sound. It lives here rather than in the engine because
     ' MediaElement is a piece of the shell's visual tree, and the engine's host is
@@ -64,11 +69,6 @@ Public NotInheritable Class MainPage
         ' event handlers are attached by ApplyEngineChoice below, once
         ' LoadPersistedState has run.
 
-        _searchTemplates = New String() {
-            "https://duckduckgo.com/?q={q}",
-            "https://lite.duckduckgo.com/lite/?q={q}"
-        }
-
         LoadPersistedState()
 
         ' THE ENGINE IS CHOSEN BEFORE THE STRINGS ARE APPLIED, and the order is not
@@ -82,12 +82,11 @@ Public NotInheritable Class MainPage
         ' have drawn. Nothing here needed the strings in place first.
         ApplyEngineChoice()
         ApplyLocalizedStrings()
-        PopulateLanguagePicker()
-        PopulateSearchEnginePicker()
-        PopulateEnginePicker()
         RefreshTabsList()
         RefreshHistoryList()
         RefreshFavoritesList()
+        RefreshSavedList()
+        RefreshSpeedDialList()
 
         _session.DesktopMode = _appSettings.DesktopMode
         Dim restoredTabs As List(Of String) = _appSettings.GetSessionTabs()
@@ -137,6 +136,18 @@ Public NotInheritable Class MainPage
                 Dim pinsText As String = TryCast(localValues("pins"), String)
                 _pinTable.Parse(If(pinsText, String.Empty))
             End If
+            If localValues.ContainsKey("saved") Then
+                Dim savedText As String = TryCast(localValues("saved"), String)
+                _savedPages.Parse(If(savedText, String.Empty))
+            End If
+            If localValues.ContainsKey("sites") Then
+                Dim sitesText As String = TryCast(localValues("sites"), String)
+                _sitePrefs.Parse(If(sitesText, String.Empty))
+            End If
+            If localValues.ContainsKey("speeddial") Then
+                Dim dialText As String = TryCast(localValues("speeddial"), String)
+                _speedDial.Parse(If(dialText, String.Empty))
+            End If
             If Not String.IsNullOrEmpty(_appSettings.LanguageOverride) Then
                 Localizer.Override(_appSettings.LanguageOverride)
             End If
@@ -154,6 +165,9 @@ Public NotInheritable Class MainPage
             localValues("history") = _historyStore.Serialize()
             localValues("favorites") = _favoritesStore.Serialize()
             localValues("pins") = _pinTable.Serialize()
+            localValues("saved") = _savedPages.Serialize()
+            localValues("sites") = _sitePrefs.Serialize()
+            localValues("speeddial") = _speedDial.Serialize()
         Catch ex As Exception
         End Try
     End Sub
@@ -169,6 +183,8 @@ Public NotInheritable Class MainPage
         FindButton.Content = Localizer.Get("Find")
         ReadingButton.Content = Localizer.Get("ReadingMode")
         ShareButton.Content = Localizer.Get("Share")
+        SavePageButton.Content = Localizer.Get("SavePage")
+        RetryButton.Content = Localizer.Get("Retry")
         FindNextButton.Content = Localizer.Get("Find")
         FindCloseButton.Content = Localizer.Get("DiagnosticsClose")
         SecurityDetailsButton.Content = Localizer.Get("SecurityDetails")
@@ -190,7 +206,6 @@ Public NotInheritable Class MainPage
         RestoreSessionToggle.Content = Localizer.Get("RestoreSession")
         LiteRedirectsToggle.Content = Localizer.Get("LiteRedirects")
         HomepageLabel.Text = Localizer.Get("HomepageLabel")
-        SearchEngineLabel.Text = Localizer.Get("SearchEngineLabel")
         EngineLabel.Text = Localizer.Get("EngineLabel")
         TabsTitle.Text = Localizer.Get("TabsTitle")
         CloseTabButton.Content = Localizer.Get("CloseTab")
@@ -205,7 +220,6 @@ Public NotInheritable Class MainPage
         PinTitle.Text = Localizer.Get("PinTitle")
         PinAddButton.Content = Localizer.Get("PinAdd")
         PinRemoveButton.Content = Localizer.Get("PinRemove")
-        ParsePageButton.Content = Localizer.Get("ParseThisPage")
         IeModeButton.Content = Localizer.Get("IeModeCheck")
         RemoteKeysButton.Content = Localizer.Get("RemoteKeys")
         KeyTabButton.Content = Localizer.Get("KeyTab")
@@ -217,6 +231,17 @@ Public NotInheritable Class MainPage
         KeyDownButton.Content = Localizer.Get("KeyDown")
         KeyRightButton.Content = Localizer.Get("KeyRight")
         KeyBarCloseButton.Content = Localizer.Get("KeyBarClose")
+        SavedPagesTitle.Text = Localizer.Get("SavedPages")
+        DeleteSavedButton.Content = Localizer.Get("SavedDelete")
+        SpeedDialTitle.Text = Localizer.Get("SpeedDial")
+        SpeedDialAddButton.Content = Localizer.Get("SpeedDialAdd")
+        SpeedDialRemoveButton.Content = Localizer.Get("SpeedDialRemove")
+        BackupButton.Content = Localizer.Get("Backup")
+        RestoreButton.Content = Localizer.Get("Restore")
+        OfflineBackButton.Content = Localizer.Get("DiagnosticsClose")
+        ImagesToggle.Content = Localizer.Get("Images")
+        TextSizeLabel.Text = Localizer.Get("TextSize")
+        UpdateSiteSection()
 
         DesktopToggle.IsChecked = _session.DesktopMode
         PrivateModeToggle.IsChecked = _session.PrivateMode
@@ -262,21 +287,6 @@ Public NotInheritable Class MainPage
         Finally
             _populatingLanguage = False
         End Try
-    End Sub
-
-    Private Sub PopulateSearchEnginePicker()
-        SearchEnginePicker.Items.Clear()
-        SearchEnginePicker.Items.Add("DuckDuckGo")
-        SearchEnginePicker.Items.Add("DuckDuckGo Lite")
-        Dim currentTemplate As String = _appSettings.SearchTemplate
-        Dim pickedIndex As Integer = 0
-        For i As Integer = 0 To _searchTemplates.Length - 1
-            If _searchTemplates(i) = currentTemplate Then
-                pickedIndex = i
-                Exit For
-            End If
-        Next
-        SearchEnginePicker.SelectedIndex = pickedIndex
     End Sub
 
     ''' <summary>
@@ -346,7 +356,7 @@ Public NotInheritable Class MainPage
         Dim entries As IList(Of HistoryEntry) = _historyStore.List()
         For i As Integer = entries.Count - 1 To 0 Step -1
             HistoryList.Items.Add(entries(i).Url)
-            If HistoryList.Items.Count >= 50 Then
+            If HistoryList.Items.Count >= 25 Then
                 Exit For
             End If
         Next
@@ -357,6 +367,26 @@ Public NotInheritable Class MainPage
         Dim entries As IList(Of FavoriteEntry) = _favoritesStore.List()
         For Each favEntry In entries
             FavoritesList.Items.Add(favEntry.Url)
+        Next
+    End Sub
+
+    Private Sub RefreshSavedList()
+        SavedPagesList.Items.Clear()
+        Dim entries As IList(Of SavedPageEntry) = _savedPages.List()
+        For i As Integer = entries.Count - 1 To 0 Step -1
+            Dim shownTitle As String = entries(i).Title
+            If String.IsNullOrEmpty(shownTitle) Then
+                shownTitle = entries(i).Url
+            End If
+            SavedPagesList.Items.Add(shownTitle)
+        Next
+    End Sub
+
+    Private Sub RefreshSpeedDialList()
+        SpeedDialList.Items.Clear()
+        Dim entries As IList(Of SpeedDialEntry) = _speedDial.List()
+        For Each dialEntry In entries
+            SpeedDialList.Items.Add(dialEntry.Title)
         Next
     End Sub
 
@@ -409,6 +439,17 @@ Public NotInheritable Class MainPage
         ApplyNightMode()
     End Sub
 
+    Private Async Sub ApplyNightMode()
+        Try
+            Dim scripted As TridentEngine = ScriptedEngine
+            If scripted Is Nothing Then
+                Return
+            End If
+            Await ApplyPageTweaksAsync(scripted)
+        Catch ex As Exception
+        End Try
+    End Sub
+
     Private Sub BlockTrackersToggle_Checked(sender As Object, e As RoutedEventArgs)
         _appSettings.BlockTrackers = True
         SavePersistedState()
@@ -455,18 +496,98 @@ Public NotInheritable Class MainPage
         End Try
     End Sub
 
+    ''' <summary>Host of the active tab, or empty when there is nothing to tweak.</summary>
+    Private Function CurrentHost() As String
+        Dim tabUrl As String = _session.ActiveTab.Url
+        Dim parsedUri As Uri = Nothing
+        If Not Uri.TryCreate(If(tabUrl, String.Empty), UriKind.Absolute, parsedUri) Then
+            Return String.Empty
+        End If
+        Return parsedUri.Host
+    End Function
+
+    Private Sub UpdateSiteSection()
+        Dim hostName As String = CurrentHost()
+        SiteHostText.Text = hostName
+        Dim prefs = _sitePrefs.GetSetting(hostName)
+        TextSizeLabel.Text = Localizer.Get("TextSize") & ": " & prefs.TextSizePct & "%"
+        ImagesToggle.IsChecked = Not prefs.ImagesOff
+    End Sub
+
+    Private Sub TextSmallerButton_Click(sender As Object, e As RoutedEventArgs)
+        AdjustSiteTextSize(-10)
+    End Sub
+
+    Private Sub TextLargerButton_Click(sender As Object, e As RoutedEventArgs)
+        AdjustSiteTextSize(10)
+    End Sub
+
+    Private Sub AdjustSiteTextSize(stepValue As Integer)
+        Dim hostName As String = CurrentHost()
+        If String.IsNullOrEmpty(hostName) Then
+            Return
+        End If
+        Dim prefs = _sitePrefs.GetSetting(hostName)
+        _sitePrefs.SetSetting(hostName, prefs.TextSizePct + stepValue, prefs.ImagesOff)
+        SavePersistedState()
+        UpdateSiteSection()
+        ApplySiteTextSize(hostName)
+    End Sub
+
+    Private Async Sub ApplySiteTextSize(hostName As String)
+        Try
+            Dim scripted As TridentEngine = ScriptedEngine
+            If scripted Is Nothing Then
+                Return
+            End If
+            Await scripted.SetTextSizeAsync(_sitePrefs.GetSetting(hostName).TextSizePct)
+        Catch ex As Exception
+        End Try
+    End Sub
+
+    Private Sub ImagesToggle_Checked(sender As Object, e As RoutedEventArgs)
+        SetSiteImages(True)
+    End Sub
+
+    Private Sub ImagesToggle_Unchecked(sender As Object, e As RoutedEventArgs)
+        SetSiteImages(False)
+    End Sub
+
+    Private Async Sub SetSiteImages(showImages As Boolean)
+        Dim hostName As String = CurrentHost()
+        If String.IsNullOrEmpty(hostName) Then
+            Return
+        End If
+        Dim prefs = _sitePrefs.GetSetting(hostName)
+        _sitePrefs.SetSetting(hostName, prefs.TextSizePct, Not showImages)
+        SavePersistedState()
+        Try
+            Dim scripted As TridentEngine = ScriptedEngine
+            If scripted Is Nothing Then
+                Return
+            End If
+            Await scripted.SetImagesEnabledAsync(showImages)
+        Catch ex As Exception
+        End Try
+    End Sub
+
+    ''' <summary>Night mode plus this host's tweaks. Idempotent: safe on every load.</summary>
+    Private Async Function ApplyPageTweaksAsync(scripted As TridentEngine) As Task
+        ' The bool goes in, not a hardcoded True: unchecking night mode must
+        ' remove the stylesheet, and ApplyNightMode above exists for the toggle.
+        Await scripted.SetNightModeAsync(_appSettings.NightMode)
+        Dim hostName As String = CurrentHost()
+        If Not String.IsNullOrEmpty(hostName) Then
+            Dim prefs = _sitePrefs.GetSetting(hostName)
+            Await scripted.SetTextSizeAsync(prefs.TextSizePct)
+            Await scripted.SetImagesEnabledAsync(Not prefs.ImagesOff)
+        End If
+    End Function
+
     Private Sub HomepageBox_LostFocus(sender As Object, e As RoutedEventArgs)
         Dim typedHome As String = HomepageBox.Text.Trim()
         If Not String.IsNullOrEmpty(typedHome) Then
             _appSettings.Homepage = typedHome
-            SavePersistedState()
-        End If
-    End Sub
-
-    Private Sub SearchEnginePicker_SelectionChanged(sender As Object, e As SelectionChangedEventArgs)
-        Dim picked As Integer = SearchEnginePicker.SelectedIndex
-        If picked >= 0 AndAlso picked < _searchTemplates.Length Then
-            _appSettings.SearchTemplate = _searchTemplates(picked)
             SavePersistedState()
         End If
     End Sub
@@ -804,6 +925,231 @@ Public NotInheritable Class MainPage
         End Try
     End Sub
 
+    Private Async Sub SavePageButton_Click(sender As Object, e As RoutedEventArgs)
+        Try
+            Dim scripted As TridentEngine = ScriptedEngine
+            If scripted Is Nothing Then
+                Return
+            End If
+            Dim pageUrl As String = _session.ActiveTab.Url
+            If String.IsNullOrEmpty(pageUrl) Then
+                Return
+            End If
+            Dim rawText As String = Await scripted.ExtractArticleTextAsync()
+            If String.IsNullOrEmpty(rawText) Then
+                StatusText.Text = Localizer.Get("ErrorPageFailed")
+                Return
+            End If
+            Dim breakPos As Integer = rawText.IndexOf(vbLf)
+            Dim pageTitle As String
+            Dim pageBody As String
+            If breakPos < 0 Then
+                pageTitle = pageUrl
+                pageBody = rawText
+            Else
+                pageTitle = rawText.Substring(0, breakPos).Trim()
+                pageBody = rawText.Substring(breakPos + 1)
+                If String.IsNullOrEmpty(pageTitle) Then
+                    pageTitle = pageUrl
+                End If
+            End If
+            _savedPages.Add(pageUrl, pageTitle, pageBody)
+            SavePersistedState()
+            RefreshSavedList()
+            StatusText.Text = Localizer.Get("SavedPages")
+        Catch ex As Exception
+        End Try
+    End Sub
+
+    Private Sub SavedPagesList_SelectionChanged(sender As Object, e As SelectionChangedEventArgs)
+        Dim picked As Integer = SavedPagesList.SelectedIndex
+        If picked < 0 Then
+            Return
+        End If
+        Dim entries As IList(Of SavedPageEntry) = _savedPages.List()
+        If picked >= entries.Count Then
+            Return
+        End If
+        OfflineTitle.Text = entries(picked).Title
+        OfflineBody.Text = entries(picked).Text
+        SettingsOverlay.Visibility = Visibility.Collapsed
+        OfflineOverlay.Visibility = Visibility.Visible
+        SavedPagesList.SelectedIndex = -1
+    End Sub
+
+    Private Sub DeleteSavedButton_Click(sender As Object, e As RoutedEventArgs)
+        Dim picked As Integer = SavedPagesList.SelectedIndex
+        If picked < 0 Then
+            Return
+        End If
+        _savedPages.RemoveAt(picked)
+        SavePersistedState()
+        RefreshSavedList()
+    End Sub
+
+    Private Sub OfflineBackButton_Click(sender As Object, e As RoutedEventArgs)
+        OfflineOverlay.Visibility = Visibility.Collapsed
+        SettingsOverlay.Visibility = Visibility.Visible
+    End Sub
+
+    Private Sub SpeedDialList_SelectionChanged(sender As Object, e As SelectionChangedEventArgs)
+        Dim picked As Integer = SpeedDialList.SelectedIndex
+        If picked < 0 Then
+            Return
+        End If
+        Dim entries As IList(Of SpeedDialEntry) = _speedDial.List()
+        If picked >= entries.Count Then
+            Return
+        End If
+        Dim pickedUrl As String = entries(picked).Url
+        SettingsOverlay.Visibility = Visibility.Collapsed
+        _session.ActiveTab.PushHistory(pickedUrl)
+        _engine.Navigate(pickedUrl)
+        SpeedDialList.SelectedIndex = -1
+    End Sub
+
+    Private Sub SpeedDialAddButton_Click(sender As Object, e As RoutedEventArgs)
+        Dim tabUrl As String = _session.ActiveTab.Url
+        If String.IsNullOrEmpty(tabUrl) Then
+            Return
+        End If
+        _speedDial.Add(tabUrl, tabUrl)
+        SavePersistedState()
+        RefreshSpeedDialList()
+    End Sub
+
+    Private Sub SpeedDialRemoveButton_Click(sender As Object, e As RoutedEventArgs)
+        Dim picked As Integer = SpeedDialList.SelectedIndex
+        If picked < 0 Then
+            Return
+        End If
+        Dim entries As IList(Of SpeedDialEntry) = _speedDial.List()
+        If picked >= entries.Count Then
+            Return
+        End If
+        _speedDial.Remove(entries(picked).Url)
+        SavePersistedState()
+        RefreshSpeedDialList()
+    End Sub
+
+    Private Async Sub BackupButton_Click(sender As Object, e As RoutedEventArgs)
+        Try
+            Dim saver As New FileSavePicker()
+            saver.SuggestedStartLocation = PickerLocationId.ComputerFolder
+            saver.SuggestedFileName = "browserforwp-backup"
+            Dim exts As New List(Of String)()
+            exts.Add(".txt")
+            saver.FileTypeChoices.Add("Text", exts)
+            Dim pickedFile As StorageFile = Await saver.PickSaveFileAsync()
+            If pickedFile Is Nothing Then
+                Return
+            End If
+            Dim sections As New Dictionary(Of String, String)()
+            sections("settings") = MapToLines(_appSettings.SaveToMap())
+            sections("history") = _historyStore.Serialize()
+            sections("favorites") = _favoritesStore.Serialize()
+            sections("pins") = _pinTable.Serialize()
+            sections("saved") = _savedPages.Serialize()
+            sections("sites") = _sitePrefs.Serialize()
+            sections("speeddial") = _speedDial.Serialize()
+            Await FileIO.WriteTextAsync(pickedFile, BackupManager.BuildBackup(sections))
+            BackupStatus.Text = Localizer.Get("BackupDone")
+        Catch ex As Exception
+            BackupStatus.Text = Localizer.Get("ErrorPageFailed")
+        End Try
+    End Sub
+
+    Private Async Sub RestoreButton_Click(sender As Object, e As RoutedEventArgs)
+        Try
+            Dim opener As New FileOpenPicker()
+            opener.SuggestedStartLocation = PickerLocationId.ComputerFolder
+            opener.FileTypeFilter.Add(".txt")
+            Dim pickedFile As StorageFile = Await opener.PickSingleFileAsync()
+            If pickedFile Is Nothing Then
+                Return
+            End If
+            Dim backupText As String = Await FileIO.ReadTextAsync(pickedFile)
+            Dim sections As Dictionary(Of String, String) = Nothing
+            If Not BackupManager.TryParseBackup(backupText, sections) Then
+                BackupStatus.Text = Localizer.Get("ErrorPageFailed")
+                Return
+            End If
+            If sections.ContainsKey("settings") Then
+                _appSettings.LoadFromMap(ParseMapLines(sections("settings")))
+            End If
+            If sections.ContainsKey("history") Then
+                _historyStore.Parse(sections("history"))
+            End If
+            If sections.ContainsKey("favorites") Then
+                _favoritesStore.Parse(sections("favorites"))
+            End If
+            If sections.ContainsKey("pins") Then
+                _pinTable.Parse(sections("pins"))
+            End If
+            If sections.ContainsKey("saved") Then
+                _savedPages.Parse(sections("saved"))
+            End If
+            If sections.ContainsKey("sites") Then
+                _sitePrefs.Parse(sections("sites"))
+            End If
+            If sections.ContainsKey("speeddial") Then
+                _speedDial.Parse(sections("speeddial"))
+            End If
+            SavePersistedState()
+            ApplyLocalizedStrings()
+            PopulateLanguagePicker()
+            PopulateEnginePicker()
+            RefreshTabsList()
+            RefreshHistoryList()
+            RefreshFavoritesList()
+            RefreshSavedList()
+            RefreshSpeedDialList()
+            BackupStatus.Text = Localizer.Get("BackupDone")
+        Catch ex As Exception
+            BackupStatus.Text = Localizer.Get("ErrorPageFailed")
+        End Try
+    End Sub
+
+    ''' <summary>Settings map to lines. Newlines in values ride as "\n": the
+    ''' section encoding is already base64, so this only has to survive one
+    ''' split on vbLf, which a literal backslash-n never contains.</summary>
+    Private Shared Function MapToLines(hostMap As Dictionary(Of String, String)) As String
+        Dim lines As New List(Of String)()
+        For Each pairItem In hostMap
+            lines.Add(pairItem.Key & "=" & If(pairItem.Value, String.Empty).Replace(vbLf, "\n"))
+        Next
+        Return String.Join(vbLf, lines.ToArray())
+    End Function
+
+    Private Shared Function ParseMapLines(mapText As String) As Dictionary(Of String, String)
+        Dim hostMap As New Dictionary(Of String, String)()
+        If String.IsNullOrEmpty(mapText) Then
+            Return hostMap
+        End If
+        Dim rawLines As String() = mapText.Split(New String() {vbLf}, StringSplitOptions.None)
+        For Each rawLine In rawLines
+            rawLine = If(rawLine, String.Empty).TrimEnd()
+            If String.IsNullOrEmpty(rawLine) Then
+                Continue For
+            End If
+            Dim eqPos As Integer = rawLine.IndexOf("="c)
+            If eqPos <= 0 Then
+                Continue For
+            End If
+            hostMap(rawLine.Substring(0, eqPos)) = rawLine.Substring(eqPos + 1).Replace("\n", vbLf)
+        Next
+        Return hostMap
+    End Function
+
+    Private Sub RetryButton_Click(sender As Object, e As RoutedEventArgs)
+        HideError()
+        Dim tabUrl As String = _session.ActiveTab.Url
+        If String.IsNullOrEmpty(tabUrl) Then
+            tabUrl = _appSettings.Homepage
+        End If
+        _engine.Navigate(tabUrl)
+    End Sub
+
     Private Sub OnShareRequested(sender As DataTransferManager, e As DataRequestedEventArgs)
         Try
             Dim pageUrl As String = _session.ActiveTab.Url
@@ -857,9 +1203,8 @@ Public NotInheritable Class MainPage
         If scripted Is Nothing Then Return
         Try
             Await scripted.InjectPolyfillAsync()
-            If _appSettings.NightMode Then
-                Await scripted.SetNightModeAsync(True)
-            End If
+            _injectedToken = _navigationToken
+            Await ApplyPageTweaksAsync(scripted)
         Catch ex As Exception
         End Try
     End Sub
@@ -882,6 +1227,7 @@ Public NotInheritable Class MainPage
             End Select
             ErrorText.Text = failureReason & " (" & e.WebErrorStatus.ToString() & ")"
             ErrorText.Visibility = Visibility.Visible
+            RetryButton.Visibility = Visibility.Visible
             StatusText.Text = String.Empty
             Return
         End If
@@ -903,10 +1249,15 @@ Public NotInheritable Class MainPage
         If scripted Is Nothing Then Return
 
         Try
-            Await scripted.InjectPolyfillAsync()
-            If _appSettings.NightMode Then
-                Await scripted.SetNightModeAsync(True)
+            ' One injection per navigation: DOMContentLoaded already ran it for
+            ' this token on most pages, so running it again here doubles a ~27KB
+            ' eval on every load for nothing. Late-loading documents miss that
+            ' event, which is why the call stays as a fallback.
+            If _injectedToken IsNot _navigationToken Then
+                Await scripted.InjectPolyfillAsync()
+                _injectedToken = _navigationToken
             End If
+            Await ApplyPageTweaksAsync(scripted)
         Catch ex As Exception
         End Try
 
@@ -948,6 +1299,7 @@ Public NotInheritable Class MainPage
     Private Sub HideError()
         ErrorText.Visibility = Visibility.Collapsed
         ErrorText.Text = String.Empty
+        RetryButton.Visibility = Visibility.Collapsed
     End Sub
 
     Private Sub UpdateSecurityGlyph()
@@ -964,9 +1316,18 @@ Public NotInheritable Class MainPage
     End Sub
 
     Private Sub SettingsButton_Click(sender As Object, e As RoutedEventArgs)
+        ' Cold-start cost: the pickers are built on first open, not on launch.
+        If Not _settingsPopulated Then
+            PopulateLanguagePicker()
+            PopulateEnginePicker()
+            _settingsPopulated = True
+        End If
         RefreshTabsList()
         RefreshHistoryList()
         RefreshFavoritesList()
+        RefreshSavedList()
+        RefreshSpeedDialList()
+        UpdateSiteSection()
         SettingsOverlay.Visibility = Visibility.Visible
     End Sub
 
@@ -1069,49 +1430,6 @@ Public NotInheritable Class MainPage
         _pinTable.Remove(hostKey)
         SavePersistedState()
         PinStatus.Text = Localizer.Get("PinStored")
-    End Sub
-
-    ''' <summary>
-    ''' Fetch the active tab's URL over the app's own TLS 1.3 transport and show
-    ''' what the native pipeline understood. This is the demonstration that the
-    ''' engine exists: it is the only place in the product where a page LOAD goes
-    ''' over Tls13Client rather than through the WebView's Schannel path.
-    ''' </summary>
-    Private Async Sub ParsePageButton_Click(sender As Object, e As RoutedEventArgs)
-        ParsePageButton.IsEnabled = False
-        Try
-            Dim tabUrl As String = _session.ActiveTab.Url
-            If String.IsNullOrEmpty(tabUrl) Then
-                ParseResult.Text = Localizer.Get("ParseNoDocument")
-                Return
-            End If
-
-            ' The pin table goes in: a page load now travels the same TLS 1.3 path the
-            ' probe uses, so a stored pin has to be enforced here too, not only there.
-            Dim fetcher As New BrowserForWP.Diagnostics.NetDocumentFetcher(_pinTable)
-            Dim response As DocumentResponse = Await fetcher.FetchAsync(tabUrl, _appSettings.DohUrl)
-
-            If Not String.IsNullOrEmpty(response.ErrorMessage) Then
-                ParseResult.Text = Localizer.Get("ParseFailed") & " " & response.ErrorMessage
-                Return
-            End If
-            If Not response.IsHtml Then
-                ParseResult.Text = Localizer.Get("ParseNoDocument")
-                Return
-            End If
-
-            Dim boxTree As BoxNode = BoxTreeBuilder.BuildPage(response.Text, BoxTreeBuilder.PageCss(response.Text))
-            ' Every user-visible word comes from the resw, including the unit: the
-            ' plan wrote " box(es)" inline, which is exactly the hardcoded English
-            ' this repository forbids.
-            Dim headerText As String = response.FinalUrl & "  [" & response.EffectiveCharset & "]  " &
-                                       Localizer.Get("ParseBoxCount") & boxTree.DescendantCount().ToString() & vbCrLf
-            ParseResult.Text = headerText & DocumentDumper.Dump(boxTree)
-        Catch ex As Exception
-            ParseResult.Text = Localizer.Get("ParseFailed") & " " & ex.Message
-        Finally
-            ParsePageButton.IsEnabled = True
-        End Try
     End Sub
 
     ''' <summary>
@@ -1321,6 +1639,7 @@ Public NotInheritable Class MainPage
                 ErrorText.Text = ErrorText.Text & " (" & e.Detail & ")"
             End If
             ErrorText.Visibility = Visibility.Visible
+            RetryButton.Visibility = Visibility.Visible
             RefreshTabsList()
             Return
         End If

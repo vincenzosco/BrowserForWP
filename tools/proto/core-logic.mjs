@@ -229,19 +229,11 @@ check('closing the last tab leaves one', closing.activeTab !== null);
 const DefaultHomepage = 'https://lite.duckduckgo.com/lite/';
 const DefaultSearchTemplate = 'https://lite.duckduckgo.com/lite/?q={q}';
 const DefaultDohUrl = 'https://cloudflare-dns.com/dns-query';
-const MaxSessionTabs = 10;
-
-function migrateSearchTemplate(stored) {
-  if (!stored) return DefaultSearchTemplate;
-  const lowered = stored.toLowerCase();
-  if (lowered.includes('google.') || lowered.includes('bing.')) return DefaultSearchTemplate;
-  return stored;
-}
+const MaxSessionTabs = 6;
 
 class AppSettings {
   constructor() {
     this.homepage = DefaultHomepage;
-    this.searchTemplate = DefaultSearchTemplate;
     this.dohUrl = DefaultDohUrl;
     this.desktopMode = false;
     this.languageOverride = null;
@@ -252,14 +244,14 @@ class AppSettings {
     this.lastSessionTabs = '';
   }
   searchUrlFor(query) {
-    return this.searchTemplate.replace('{q}', encodeURIComponent(String(query ?? '')));
+    return DefaultSearchTemplate.replace('{q}', encodeURIComponent(String(query ?? '')));
   }
   getSessionTabs() {
     if (!this.lastSessionTabs) return [];
     return this.lastSessionTabs
       .split('\n')
       .map((l) => l.trim())
-      .filter((l) => l.toLowerCase().startsWith('http'))
+      .filter((l) => l.toLowerCase().startsWith('http://') || l.toLowerCase().startsWith('https://'))
       .slice(0, MaxSessionTabs);
   }
   setSessionTabs(urls) {
@@ -274,7 +266,6 @@ class AppSettings {
   saveToMap() {
     return {
       homepage: this.homepage || DefaultHomepage,
-      searchTemplate: this.searchTemplate || DefaultSearchTemplate,
       dohUrl: this.dohUrl || DefaultDohUrl,
       desktopMode: this.desktopMode ? '1' : '0',
       languageOverride: this.languageOverride || '',
@@ -288,7 +279,6 @@ class AppSettings {
   loadFromMap(map) {
     if (!map) return;
     if ('homepage' in map) this.homepage = map.homepage || DefaultHomepage;
-    if ('searchTemplate' in map) this.searchTemplate = migrateSearchTemplate(map.searchTemplate);
     if ('dohUrl' in map) this.dohUrl = map.dohUrl || DefaultDohUrl;
     if ('desktopMode' in map) this.desktopMode = map.desktopMode === '1';
     if ('languageOverride' in map) this.languageOverride = map.languageOverride || null;
@@ -311,9 +301,7 @@ const hostMap = appSettings.saveToMap();
 const reloaded = new AppSettings();
 reloaded.loadFromMap(hostMap);
 check('settings roundtrip', reloaded.homepage === appSettings.homepage);
-check('legacy google migrates', migrateSearchTemplate('https://www.google.com/search?q={q}') === DefaultSearchTemplate);
-check('legacy bing migrates', migrateSearchTemplate('https://www.bing.com/search?q={q}') === DefaultSearchTemplate);
-check('unknown template kept', migrateSearchTemplate('https://searx.example/?q={q}') === 'https://searx.example/?q={q}');
+check('single search default', appSettings.searchUrlFor('x') === DefaultSearchTemplate.replace('{q}', 'x'));
 check('session tab cap', (() => {
   const s = new AppSettings();
   s.setSessionTabs(Array.from({ length: 25 }, (_, i) => `https://h${i}.example/`));
@@ -327,7 +315,7 @@ check('non-http tab dropped', (() => {
 })());
 
 // ── BrowserForWP.Core/Storage/HistoryStore.vb ─────────────────────────────
-const HistoryMaxEntries = 100;
+const HistoryMaxEntries = 50;
 class HistoryStore {
   constructor() {
     this._entries = [];
@@ -374,7 +362,7 @@ const savedHistory = history.serialize();
 const history2 = new HistoryStore();
 history2.parse(savedHistory);
 check('history roundtrip', history2.count === 1);
-check('history capped at 100', (() => {
+check('history capped at 50', (() => {
   const h = new HistoryStore();
   for (let i = 0; i < 150; i += 1) h.add(`https://h${i}.example/`, 'T');
   return h.count === HistoryMaxEntries;
@@ -389,7 +377,7 @@ check('history pipe stripped', (() => {
 })());
 
 // ── BrowserForWP.Core/Storage/FavoritesStore.vb ───────────────────────────
-const FavoritesMaxEntries = 100;
+const FavoritesMaxEntries = 50;
 class FavoritesStore {
   constructor() {
     this._items = new Map();
@@ -435,14 +423,14 @@ check('fav add', favorites.add('https://a.example/', 'A') === true);
 check('fav dup rejected', favorites.add('https://a.example/', 'A') === false);
 check('fav contains', favorites.contains('https://a.example/') === true);
 check('fav remove', favorites.remove('https://a.example/') === true && favorites.contains('https://a.example/') === false);
-check('favorites capped at 100', (() => {
+check('favorites capped at 50', (() => {
   const f = new FavoritesStore();
   for (let i = 0; i < 150; i += 1) f.add(`https://f${i}.example/`, 'T');
   return f.count === FavoritesMaxEntries;
 })());
 
 // ── BrowserForWP.Net/Tls13/PinStore.vb ────────────────────────────────────
-const PinMaxPins = 50;
+const PinMaxPins = 25;
 function normalizeHost(hostName) {
   if (!hostName) return '';
   let clean = String(hostName).trim().toLowerCase();
@@ -494,7 +482,7 @@ check('pin match', pins.verify('example.com', 'abc123') === true);
 check('pin mismatch', pins.verify('example.com', 'zzz') === false);
 check('no pin passes', pins.verify('other.com', null) === true);
 check('pin remove', pins.remove('example.com') === true && pins.contains('example.com') === false);
-check('pins capped at 50', (() => {
+check('pins capped at 25', (() => {
   const p = new PinStore();
   for (let i = 0; i < 150; i += 1) {
     // Add THROWS once the store is full (InvalidOperationException in VB),

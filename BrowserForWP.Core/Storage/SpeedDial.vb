@@ -1,13 +1,14 @@
-' BrowserForWP — persisted favorites/bookmarks (pure, no WinRT dependency).
+' BrowserForWP — speed dial (pure, no WinRT dependency).
 '
-' Serialization is one entry per line: url + "|" + title.
+' Eight fixed slots for one-tap top sites. Order is insertion order; tapping a
+' slot navigates to it. Duplicates and overflow are rejected, never replaced.
 
 Imports System.Collections.Generic
 
 Namespace Storage
 
-    ''' <summary>Named bookmark.</summary>
-    Public NotInheritable Class FavoriteEntry
+    ''' <summary>One speed-dial slot.</summary>
+    Public NotInheritable Class SpeedDialEntry
 
         Public Sub New(pageUrl As String, pageTitle As String)
             Me.Url = If(pageUrl, String.Empty)
@@ -18,13 +19,12 @@ Namespace Storage
         Public ReadOnly Title As String
     End Class
 
-    ''' <summary>Bookmark set keyed by URL.</summary>
-    Public NotInheritable Class FavoritesStore
+    ''' <summary>Bounded one-tap site list.</summary>
+    Public NotInheritable Class SpeedDial
 
-        ''' <summary>Maximum bookmarks kept (speed + memory).</summary>
-        Public Const MaxEntries As Integer = 50
+        Public Const MaxSlots As Integer = 8
 
-        Private ReadOnly _items As New Dictionary(Of String, String)()
+        Private ReadOnly _items As New List(Of SpeedDialEntry)()
 
         Public ReadOnly Property Count As Integer
             Get
@@ -36,13 +36,19 @@ Namespace Storage
             If String.IsNullOrEmpty(pageUrl) Then
                 Return False
             End If
-            If _items.ContainsKey(pageUrl) Then
+            For Each existing In _items
+                If existing.Url = pageUrl Then
+                    Return False
+                End If
+            Next
+            If _items.Count >= MaxSlots Then
                 Return False
             End If
-            If _items.Count >= MaxEntries Then
-                Return False
+            Dim shownTitle As String = If(pageTitle, pageUrl)
+            If String.IsNullOrEmpty(shownTitle) Then
+                shownTitle = pageUrl
             End If
-            _items(pageUrl) = If(pageTitle, pageUrl)
+            _items.Add(New SpeedDialEntry(pageUrl, shownTitle))
             Return True
         End Function
 
@@ -50,22 +56,17 @@ Namespace Storage
             If String.IsNullOrEmpty(pageUrl) Then
                 Return False
             End If
-            Return _items.Remove(pageUrl)
-        End Function
-
-        Public Function Contains(pageUrl As String) As Boolean
-            If String.IsNullOrEmpty(pageUrl) Then
-                Return False
-            End If
-            Return _items.ContainsKey(pageUrl)
-        End Function
-
-        Public Function List() As IList(Of FavoriteEntry)
-            Dim result As New List(Of FavoriteEntry)()
-            For Each pairItem In _items
-                result.Add(New FavoriteEntry(pairItem.Key, pairItem.Value))
+            For i As Integer = 0 To _items.Count - 1
+                If _items(i).Url = pageUrl Then
+                    _items.RemoveAt(i)
+                    Return True
+                End If
             Next
-            Return result
+            Return False
+        End Function
+
+        Public Function List() As IList(Of SpeedDialEntry)
+            Return New List(Of SpeedDialEntry)(_items)
         End Function
 
         Public Sub Clear()
@@ -74,9 +75,9 @@ Namespace Storage
 
         Public Function Serialize() As String
             Dim lines As New List(Of String)()
-            For Each pairItem In _items
-                Dim cleanUrl As String = pairItem.Key.Replace("|", "/")
-                Dim cleanTitle As String = pairItem.Value.Replace("|", " ")
+            For Each entryItem In _items
+                Dim cleanUrl As String = entryItem.Url.Replace("|", "/")
+                Dim cleanTitle As String = entryItem.Title.Replace("|", " ")
                 lines.Add(cleanUrl & "|" & cleanTitle)
             Next
             Return String.Join(vbLf, lines.ToArray())
@@ -89,6 +90,7 @@ Namespace Storage
             End If
             Dim rawLines As String() = savedText.Split(New String() {vbLf}, StringSplitOptions.None)
             For Each rawLine In rawLines
+                rawLine = If(rawLine, String.Empty).TrimEnd()
                 If String.IsNullOrEmpty(rawLine) Then
                     Continue For
                 End If
@@ -101,7 +103,10 @@ Namespace Storage
                 If String.IsNullOrEmpty(urlPart) Then
                     Continue For
                 End If
-                _items(urlPart) = titlePart
+                If _items.Count >= MaxSlots Then
+                    Exit For
+                End If
+                _items.Add(New SpeedDialEntry(urlPart, titlePart))
             Next
         End Sub
     End Class

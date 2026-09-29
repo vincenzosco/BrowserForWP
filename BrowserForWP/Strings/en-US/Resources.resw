@@ -153,17 +153,8 @@
   <data name="ProbeNotRun" xml:space="preserve">
     <value>No answer from the page: it is still loading, or this engine cannot run scripts.</value>
   </data>
-  <data name="ParseThisPage" xml:space="preserve">
-    <value>Parse current page</value>
-  </data>
   <data name="ParseNoDocument" xml:space="preserve">
     <value>Nothing to parse: the tab has no address, or the response was not HTML.</value>
-  </data>
-  <data name="ParseFailed" xml:space="preserve">
-    <value>Fetch failed.</value>
-  </data>
-  <data name="ParseBoxCount" xml:space="preserve">
-    <value>boxes: </value>
   </data>
   <data name="IeModeCheck" xml:space="preserve">
     <value>Check IE mode</value>
@@ -254,12 +245,9 @@
     <value>Pin mismatch on next probe.</value>
   </data>
 
-  <!-- Homepage and search -->
+  <!-- Homepage -->
   <data name="HomepageLabel" xml:space="preserve">
     <value>Homepage</value>
-  </data>
-  <data name="SearchEngineLabel" xml:space="preserve">
-    <value>Search engine</value>
   </data>
   <data name="EngineLabel" xml:space="preserve">
     <value>Rendering engine</value>
@@ -335,6 +323,53 @@
   <data name="LiteRedirects" xml:space="preserve">
     <value>Prefer light site versions</value>
   </data>
+
+  <!-- Offline pages -->
+  <data name="SavePage" xml:space="preserve">
+    <value>Save page</value>
+  </data>
+  <data name="SavedPages" xml:space="preserve">
+    <value>Saved pages</value>
+  </data>
+  <data name="SavedDelete" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+
+  <!-- Per-site display -->
+  <data name="TextSize" xml:space="preserve">
+    <value>Text size</value>
+  </data>
+  <data name="Images" xml:space="preserve">
+    <value>Images</value>
+  </data>
+
+  <!-- Speed dial -->
+  <data name="SpeedDial" xml:space="preserve">
+    <value>Speed dial</value>
+  </data>
+  <data name="SpeedDialAdd" xml:space="preserve">
+    <value>Add current page</value>
+  </data>
+  <data name="SpeedDialRemove" xml:space="preserve">
+    <value>Remove</value>
+  </data>
+
+  <!-- Backup and restore -->
+  <data name="Backup" xml:space="preserve">
+    <value>Back up</value>
+  </data>
+  <data name="Restore" xml:space="preserve">
+    <value>Restore</value>
+  </data>
+  <data name="BackupDone" xml:space="preserve">
+    <value>Done</value>
+  </data>
+
+  <!-- Error recovery -->
+  <data name="Retry" xml:space="preserve">
+    <value>Retry</value>
+  </data>
+
   <!-- Remote server: where the pages are drawn, and what that costs -->
   <data name="RemoteNotice" xml:space="preserve">
     <value>The server draws the pages, so whoever runs it can read everything you read, passwords included. Leave this off unless you run the server or trust who does.</value>
@@ -354,6 +389,7 @@
   <data name="RemoteUseServer" xml:space="preserve">
     <value>Draw pages on the server</value>
   </data>
+
   <!-- The keys bar: the keys a phone keyboard cannot send (see MainPage.xaml) -->
   <data name="RemoteKeys" xml:space="preserve">
     <value>Keys</value>

@@ -9,8 +9,9 @@
 ' carry a parameter, so an explicit Set block desynchronises its stack.
 ' Empty-guards live in LoadFromMap and at the call sites instead.
 '
-' Lite-first: defaults point at DuckDuckGo Lite, which Trident renders fast.
-' Stored Google/Bing templates from earlier versions migrate to the default.
+' Lite-first: search is the DuckDuckGo Lite endpoint, which Trident renders
+' fast. There is exactly one engine and no picker: the full-site template was
+' removed as a dead option rather than kept as a choice nobody can use well.
 
 Imports System.Collections.Generic
 
@@ -24,11 +25,10 @@ Namespace Storage
         Public Const DefaultDohUrl As String = "https://cloudflare-dns.com/dns-query"
 
         ''' <summary>Maximum tabs kept across a session restore (speed + memory).</summary>
-        Public Const MaxSessionTabs As Integer = 10
+        Public Const MaxSessionTabs As Integer = 6
 
         Public Sub New()
             Homepage = DefaultHomepage
-            SearchTemplate = DefaultSearchTemplate
             DohUrl = DefaultDohUrl
             DesktopMode = False
             LanguageOverride = Nothing
@@ -46,7 +46,6 @@ Namespace Storage
         End Sub
 
         Public Property Homepage As String
-        Public Property SearchTemplate As String
         Public Property DohUrl As String
         Public Property DesktopMode As Boolean
         Public Property LanguageOverride As String
@@ -94,11 +93,10 @@ Namespace Storage
         ''' <summary>Off until a person turns it on. See ARCHITECTURE.md Law 5.</summary>
         Public Property RemoteEnabled As Boolean
 
-        ''' <summary>Build a search URL from raw query text.</summary>
+        ''' <summary>Build a search URL from raw query text (single lite engine).</summary>
         Public Function SearchUrlFor(queryText As String) As String
             Dim safeQuery As String = If(queryText, String.Empty)
-            Dim templateText As String = If(String.IsNullOrEmpty(SearchTemplate), DefaultSearchTemplate, SearchTemplate)
-            Return templateText.Replace("{q}", Uri.EscapeDataString(safeQuery))
+            Return DefaultSearchTemplate.Replace("{q}", Uri.EscapeDataString(safeQuery))
         End Function
 
         ''' <summary>Tabs saved for restore, http(s) only, capped.</summary>
@@ -120,7 +118,7 @@ Namespace Storage
             Return result
         End Function
 
-        ''' <summary>Store tabs for restore: first 10, each truncated to 300 chars.</summary>
+        ''' <summary>Store tabs for restore: first 6, each truncated to 300 chars.</summary>
         Public Sub SetSessionTabs(pageUrls As IList(Of String))
             Dim kept As New List(Of String)()
             If pageUrls IsNot Nothing Then
@@ -141,23 +139,10 @@ Namespace Storage
             LastSessionTabs = String.Join(vbLf, kept.ToArray())
         End Sub
 
-        ''' <summary>Legacy heavy search engines migrate to the lite default.</summary>
-        Public Shared Function MigrateSearchTemplate(storedTemplate As String) As String
-            If String.IsNullOrEmpty(storedTemplate) Then
-                Return DefaultSearchTemplate
-            End If
-            Dim loweredTemplate As String = storedTemplate.ToLowerInvariant()
-            If loweredTemplate.Contains("google.") OrElse loweredTemplate.Contains("bing.") Then
-                Return DefaultSearchTemplate
-            End If
-            Return storedTemplate
-        End Function
-
         ''' <summary>Export to a plain string map for LocalSettings persistence.</summary>
         Public Function SaveToMap() As Dictionary(Of String, String)
             Dim hostMap As New Dictionary(Of String, String)()
             hostMap("homepage") = If(String.IsNullOrEmpty(Homepage), DefaultHomepage, Homepage)
-            hostMap("searchTemplate") = If(String.IsNullOrEmpty(SearchTemplate), DefaultSearchTemplate, SearchTemplate)
             hostMap("dohUrl") = If(String.IsNullOrEmpty(DohUrl), DefaultDohUrl, DohUrl)
             hostMap("desktopMode") = If(DesktopMode, "1", "0")
             hostMap("languageOverride") = If(LanguageOverride, String.Empty)
@@ -187,9 +172,6 @@ Namespace Storage
                 Else
                     Homepage = foundValue
                 End If
-            End If
-            If sourceMap.TryGetValue("searchTemplate", foundValue) Then
-                SearchTemplate = MigrateSearchTemplate(foundValue)
             End If
             If sourceMap.TryGetValue("dohUrl", foundValue) Then
                 If String.IsNullOrEmpty(foundValue) Then

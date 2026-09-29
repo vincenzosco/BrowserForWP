@@ -122,8 +122,12 @@
     <Compile Include="Engine\Remote\RemoteProtocol.vb" />
     <Compile Include="Engine\Remote\RemoteServers.vb" />
     <Compile Include="Storage\AppSettings.vb" />
+    <Compile Include="Storage\BackupManager.vb" />
     <Compile Include="Storage\FavoritesStore.vb" />
     <Compile Include="Storage\HistoryStore.vb" />
+    <Compile Include="Storage\SavedPages.vb" />
+    <Compile Include="Storage\SiteSettings.vb" />
+    <Compile Include="Storage\SpeedDial.vb" />
   </ItemGroup>
   <ItemGroup>
     <Import Include="Microsoft.VisualBasic" />

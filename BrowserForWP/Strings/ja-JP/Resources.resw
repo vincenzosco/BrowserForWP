@@ -59,346 +59,346 @@
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
 
-  <!-- Applicazione -->
+  <!-- Application -->
   <data name="AppName" xml:space="preserve">
     <value>BrowserForWP</value>
   </data>
 
-  <!-- Barra degli indirizzi -->
+  <!-- Address bar -->
   <data name="AddressPlaceholder" xml:space="preserve">
-    <value>Cerca o inserisci un indirizzo</value>
-    <comment>Testo segnaposto mostrato nella barra degli indirizzi quando è vuota.</comment>
+    <value>検索またはアドレスを入力</value>
+    <comment>Placeholder text shown in the address bar while empty.</comment>
   </data>
   <data name="Go" xml:space="preserve">
-    <value>Vai</value>
+    <value>移動</value>
   </data>
 
-  <!-- Comandi di navigazione -->
+  <!-- Navigation commands -->
   <data name="Back" xml:space="preserve">
-    <value>Indietro</value>
+    <value>戻る</value>
   </data>
   <data name="Forward" xml:space="preserve">
-    <value>Avanti</value>
+    <value>進む</value>
   </data>
   <data name="Reload" xml:space="preserve">
-    <value>Ricarica</value>
+    <value>再読み込み</value>
   </data>
   <data name="Stop" xml:space="preserve">
-    <value>Interrompi</value>
+    <value>停止</value>
   </data>
   <data name="NewTab" xml:space="preserve">
-    <value>Nuova scheda</value>
+    <value>新しいタブ</value>
   </data>
   <data name="CloseTab" xml:space="preserve">
-    <value>Chiudi scheda</value>
+    <value>タブを閉じる</value>
   </data>
   <data name="Settings" xml:space="preserve">
-    <value>Impostazioni</value>
+    <value>設定</value>
   </data>
 
-  <!-- Stato della connessione -->
+  <!-- Security readout -->
   <data name="SecuritySecure" xml:space="preserve">
-    <value>Connessione sicura</value>
+    <value>安全な接続</value>
   </data>
   <data name="SecurityInsecure" xml:space="preserve">
-    <value>Non sicura</value>
+    <value>安全ではありません</value>
   </data>
   <data name="SecurityTls13" xml:space="preserve">
-    <value>Sicura — TLS 1.3</value>
-    <comment>Usato quando il trasporto dell'app ha negoziato TLS 1.3.</comment>
+    <value>安全 — TLS 1.3</value>
+    <comment>Used when the app's own transport negotiated TLS 1.3.</comment>
   </data>
   <data name="SecurityWebViewCeiling" xml:space="preserve">
-    <value>(max TLS 1.2, WebView).</value>
-    <comment>Il limite reale per tutto ciò che carica la WebView ospitata: Schannel, non il nostro stack TLS 1.3.</comment>
+    <value>(TLS 1.2 max, WebView).</value>
+    <comment>The honest ceiling for anything the hosted WebView loads: Schannel, not our TLS 1.3 stack.</comment>
   </data>
 
-  <!-- Stato -->
+  <!-- Status -->
   <data name="Loading" xml:space="preserve">
-    <value>Caricamento…</value>
+    <value>読み込み中…</value>
   </data>
   <data name="LoadComplete" xml:space="preserve">
-    <value>Completato</value>
+    <value>完了</value>
   </data>
 
-  <!-- Lingua -->
+  <!-- Language -->
   <data name="LanguageLabel" xml:space="preserve">
-    <value>Lingua</value>
+    <value>言語</value>
   </data>
   <data name="LanguageAutomatic" xml:space="preserve">
-    <value>Automatica (usa la lingua del telefono)</value>
+    <value>自動 (電話の言語を使用)</value>
   </data>
 
-  <!-- Diagnostica -->
+  <!-- Diagnostics -->
   <data name="DiagnosticsTitle" xml:space="preserve">
-    <value>Diagnostica</value>
+    <value>診断</value>
   </data>
   <data name="DiagnosticsCompatProbe" xml:space="preserve">
-    <value>Esegui il probe di compatibilità</value>
+    <value>互換性チェックを実行</value>
   </data>
   <data name="DiagnosticsEngineLabel" xml:space="preserve">
-    <value>Motore di rendering</value>
+    <value>レンダリングエンジン</value>
   </data>
   <data name="CompatLayerLabel" xml:space="preserve">
-    <value>Livello di compatibilità</value>
+    <value>互換レイヤー</value>
   </data>
   <data name="CompatLayerActive" xml:space="preserve">
-    <value>richiesto da questo motore</value>
+    <value>このエンジンに必要</value>
   </data>
   <data name="CompatLayerNative" xml:space="preserve">
-    <value>non richiesto</value>
+    <value>不要</value>
   </data>
   <data name="DiagnosticsNoMissingFeatures" xml:space="preserve">
-    <value>Nessuna funzionalità web mancante rilevata.</value>
+    <value>不足しているWeb機能はありません。</value>
   </data>
   <data name="ProbeNotRun" xml:space="preserve">
-    <value>Nessuna risposta dalla pagina: è ancora in caricamento, oppure questo motore non esegue script.</value>
+    <value>ページから応答がありません: 読み込み中か、このエンジンではスクリプトを実行できません。</value>
   </data>
   <data name="ParseNoDocument" xml:space="preserve">
-    <value>Niente da analizzare: la scheda non ha indirizzo, oppure la risposta non è HTML.</value>
+    <value>解析対象がありません: タブにアドレスがないか、応答がHTMLではありません。</value>
   </data>
   <data name="IeModeCheck" xml:space="preserve">
-    <value>Controlla modalità IE</value>
+    <value>IEモードを確認</value>
   </data>
   <data name="IeModeReport" xml:space="preserve">
-    <value>modalità documento: </value>
+    <value>ドキュメントモード: </value>
   </data>
   <data name="DiagnosticsClose" xml:space="preserve">
-    <value>Chiudi</value>
+    <value>閉じる</value>
   </data>
 
-  <!-- Errori -->
+  <!-- Errors -->
   <data name="ErrorUnknownScheme" xml:space="preserve">
-    <value>Questo indirizzo usa uno schema non supportato.</value>
+    <value>そのアドレスはサポートされていないスキームを使用しています。</value>
   </data>
   <data name="ErrorPageFailed" xml:space="preserve">
-    <value>Impossibile visualizzare questa pagina.</value>
+    <value>このページを表示できませんでした。</value>
   </data>
   <data name="ErrorNoConnection" xml:space="preserve">
-    <value>Impossibile raggiungere il server.</value>
+    <value>サーバーに接続できませんでした。</value>
   </data>
   <data name="ErrorTlsHandshake" xml:space="preserve">
-    <value>Impossibile stabilire la connessione sicura.</value>
+    <value>安全な接続を確立できませんでした。</value>
   </data>
   <data name="ErrorNavigationFailed" xml:space="preserve">
-    <value>Navigazione non riuscita. Controlla l'indirizzo e riprova.</value>
+    <value>ナビゲーションに失敗しました。アドレスを確認してもう一度お試しください。</value>
   </data>
 
-  <!-- Schede -->
+  <!-- Tabs -->
   <data name="TabsTitle" xml:space="preserve">
-    <value>Schede</value>
+    <value>タブ</value>
   </data>
 
-  <!-- Sito desktop -->
+  <!-- Desktop site -->
   <data name="DesktopSite" xml:space="preserve">
-    <value>Sito desktop</value>
+    <value>デスクトップサイト</value>
   </data>
 
-  <!-- Cronologia e preferiti -->
+  <!-- History and favorites -->
   <data name="HistoryTitle" xml:space="preserve">
-    <value>Cronologia</value>
+    <value>履歴</value>
   </data>
   <data name="FavoritesTitle" xml:space="preserve">
-    <value>Preferiti</value>
+    <value>お気に入り</value>
   </data>
   <data name="AddFavorite" xml:space="preserve">
-    <value>Aggiungi preferito</value>
+    <value>お気に入りに追加</value>
   </data>
   <data name="RemoveFavorite" xml:space="preserve">
-    <value>Rimuovi preferito</value>
+    <value>お気に入りを削除</value>
   </data>
   <data name="ClearHistory" xml:space="preserve">
-    <value>Cancella cronologia</value>
+    <value>履歴を消去</value>
   </data>
 
-  <!-- Dettagli sicurezza -->
+  <!-- Security details -->
   <data name="SecurityDetails" xml:space="preserve">
-    <value>Dettagli sicurezza</value>
+    <value>セキュリティの詳細</value>
   </data>
 
-  <!-- Probe TLS -->
+  <!-- TLS probe -->
   <data name="TlsProbeHostLabel" xml:space="preserve">
-    <value>Host probe TLS</value>
+    <value>TLSプローブのホスト</value>
   </data>
   <data name="TlsProbeRun" xml:space="preserve">
-    <value>Esegui probe TLS ora</value>
+    <value>TLSプローブを実行</value>
   </data>
 
   <!-- DoH -->
   <data name="DohServerLabel" xml:space="preserve">
-    <value>Server DoH</value>
+    <value>DoHサーバー</value>
   </data>
 
   <!-- Pinning -->
   <data name="PinTitle" xml:space="preserve">
-    <value>Pin certificati</value>
+    <value>証明書のピン</value>
   </data>
   <data name="PinAdd" xml:space="preserve">
-    <value>Aggiungi pin</value>
+    <value>ピンを追加</value>
   </data>
   <data name="PinRemove" xml:space="preserve">
-    <value>Rimuovi pin</value>
+    <value>ピンを削除</value>
   </data>
   <data name="PinStored" xml:space="preserve">
-    <value>Pin salvato.</value>
+    <value>ピンを保存しました。</value>
   </data>
   <data name="PinMismatch" xml:space="preserve">
-    <value>Pin non corrispondente al prossimo probe.</value>
+    <value>次回のプローブでピンが一致しません。</value>
   </data>
 
   <!-- Homepage -->
   <data name="HomepageLabel" xml:space="preserve">
-    <value>Homepage</value>
+    <value>ホームページ</value>
   </data>
   <data name="EngineLabel" xml:space="preserve">
-    <value>Motore di rendering</value>
+    <value>レンダリングエンジン</value>
   </data>
   <data name="EngineAuto" xml:space="preserve">
-    <value>Automatico</value>
+    <value>自動</value>
   </data>
   <data name="EngineTrident" xml:space="preserve">
-    <value>WebView di sistema (Trident)</value>
+    <value>System WebView (Trident)</value>
   </data>
   <data name="EngineRemote" xml:space="preserve">
-    <value>Server (Chromium remoto)</value>
+    <value>サーバー (リモートのChromium)</value>
   </data>
   <data name="EngineReasonSetting" xml:space="preserve">
-    <value>Scelto nelle Impostazioni.</value>
+    <value>設定で選択。</value>
   </data>
   <data name="EngineReasonSettingRemote" xml:space="preserve">
-    <value>Scelto nelle Impostazioni: le pagine sono disegnate dal server che hai configurato, che può leggere tutto ciò che leggi.</value>
+    <value>設定で選択: 設定したサーバーがページを描画し、読む内容をすべて読むことができます。</value>
   </data>
   <data name="EngineReasonRemoteSecondary" xml:space="preserve">
-    <value>Il server primario non ha risposto, quindi si sta usando il secondario.</value>
+    <value>プライマリサーバーが応答しなかったため、セカンダリを使用しています。</value>
   </data>
   <data name="EngineReasonRemoteNotConfigured" xml:space="preserve">
-    <value>Nessun server configurato. Aggiungine uno nelle Impostazioni, sotto Server.</value>
+    <value>サーバーが設定されていません。設定のサーバーで追加してください。</value>
   </data>
   <data name="EngineReasonRemoteUnreachable" xml:space="preserve">
-    <value>Nessuno dei due server ha risposto.</value>
+    <value>どちらのサーバーも応答しませんでした。</value>
   </data>
   <data name="EngineReasonAutoNoMeasurement" xml:space="preserve">
-    <value>Automatico: nessuna pagina è stata ancora misurata, quindi si usa il motore di sistema.</value>
+    <value>自動: まだページが測定されていないため、システムエンジンを使用します。</value>
   </data>
   <data name="EngineReasonAutoFits" xml:space="preserve">
-    <value>Automatico: la pagina misurata funziona ancora con il motore di sistema.</value>
+    <value>自動: 測定したページはシステムエンジンで動作します。</value>
   </data>
   <data name="EngineReasonAutoTooManyMissingFeatures" xml:space="preserve">
-    <value>Automatico: alla pagina misurata mancano troppe funzionalità che il motore di sistema non ha.</value>
+    <value>自動: 測定したページはシステムエンジンにない機能を多数必要とします。</value>
   </data>
 
-  <!-- Modalita leggere -->
+  <!-- Lightweight modes -->
   <data name="ReadingMode" xml:space="preserve">
-    <value>Modalità lettura</value>
+    <value>リーディングモード</value>
   </data>
   <data name="NightMode" xml:space="preserve">
-    <value>Modalità notte</value>
+    <value>ナイトモード</value>
   </data>
   <data name="Find" xml:space="preserve">
-    <value>Trova</value>
+    <value>検索</value>
   </data>
   <data name="Share" xml:space="preserve">
-    <value>Condividi</value>
+    <value>共有</value>
   </data>
   <data name="PrivateMode" xml:space="preserve">
-    <value>Modalità privata</value>
+    <value>プライベートモード</value>
   </data>
   <data name="BlockTrackers" xml:space="preserve">
-    <value>Blocca tracker</value>
+    <value>トラッカーをブロック</value>
   </data>
   <data name="RestoreSession" xml:space="preserve">
-    <value>Ripristina schede all'avvio</value>
+    <value>起動時にタブを復元</value>
   </data>
   <data name="Diagnostics" xml:space="preserve">
-    <value>Diagnostica</value>
+    <value>診断</value>
   </data>
   <data name="FindNoMatch" xml:space="preserve">
-    <value>Non trovato</value>
+    <value>見つかりません</value>
   </data>
   <data name="BlockedTracker" xml:space="preserve">
-    <value>Tracker bloccato</value>
+    <value>トラッカーをブロックしました</value>
   </data>
   <data name="ReaderFallback" xml:space="preserve">
-    <value>Articolo semplificato</value>
+    <value>簡易表示の記事を表示しています</value>
   </data>
   <data name="LiteRedirects" xml:space="preserve">
-    <value>Preferisci versioni leggere</value>
+    <value>軽量版のサイトを優先</value>
   </data>
 
-  <!-- Pagine offline -->
+  <!-- Offline pages -->
   <data name="SavePage" xml:space="preserve">
-    <value>Salva pagina</value>
+    <value>ページを保存</value>
   </data>
   <data name="SavedPages" xml:space="preserve">
-    <value>Pagine salvate</value>
+    <value>保存したページ</value>
   </data>
   <data name="SavedDelete" xml:space="preserve">
-    <value>Elimina</value>
+    <value>削除</value>
   </data>
 
-  <!-- Visualizzazione per sito -->
+  <!-- Per-site display -->
   <data name="TextSize" xml:space="preserve">
-    <value>Dimensione testo</value>
+    <value>文字サイズ</value>
   </data>
   <data name="Images" xml:space="preserve">
-    <value>Immagini</value>
+    <value>画像</value>
   </data>
 
-  <!-- Accesso rapido -->
+  <!-- Speed dial -->
   <data name="SpeedDial" xml:space="preserve">
-    <value>Accesso rapido</value>
+    <value>スピードダイヤル</value>
   </data>
   <data name="SpeedDialAdd" xml:space="preserve">
-    <value>Aggiungi pagina corrente</value>
+    <value>現在のページを追加</value>
   </data>
   <data name="SpeedDialRemove" xml:space="preserve">
-    <value>Rimuovi</value>
+    <value>削除</value>
   </data>
 
-  <!-- Backup e ripristino -->
+  <!-- Backup and restore -->
   <data name="Backup" xml:space="preserve">
-    <value>Backup</value>
+    <value>バックアップ</value>
   </data>
   <data name="Restore" xml:space="preserve">
-    <value>Ripristina</value>
+    <value>復元</value>
   </data>
   <data name="BackupDone" xml:space="preserve">
-    <value>Completato</value>
+    <value>完了</value>
   </data>
 
-  <!-- Recupero errori -->
+  <!-- Error recovery -->
   <data name="Retry" xml:space="preserve">
-    <value>Riprova</value>
+    <value>再試行</value>
   </data>
 
-  <!-- Server remoto: dove sono disegnate le pagine, e quanto costa -->
+  <!-- Remote server: where the pages are drawn, and what that costs -->
   <data name="RemoteNotice" xml:space="preserve">
-    <value>Le pagine sono disegnate dal server, quindi chi lo gestisce può leggere tutto quello che leggi tu, password comprese. Lascia disattivato se non gestisci tu il server o non ti fidi di chi lo fa.</value>
+    <value>ページはサーバーが描画するため、運営者はパスワードを含め読む内容をすべて読むことができます。サーバーを自分で運営している場合や運営者を信頼できる場合を除き、オフのままにしてください。</value>
   </data>
   <data name="RemoteServerLabel" xml:space="preserve">
-    <value>Indirizzo del server</value>
+    <value>サーバーアドレス</value>
   </data>
   <data name="RemoteTokenLabel" xml:space="preserve">
-    <value>Token del dispositivo</value>
+    <value>デバイストークン</value>
   </data>
   <data name="RemoteBackupLabel" xml:space="preserve">
-    <value>Indirizzo del server di riserva (facoltativo)</value>
+    <value>バックアップサーバーのアドレス (任意)</value>
   </data>
   <data name="RemoteBackupTokenLabel" xml:space="preserve">
-    <value>Token del dispositivo di riserva (facoltativo)</value>
+    <value>バックアップデバイスのトークン (任意)</value>
   </data>
   <data name="RemoteUseServer" xml:space="preserve">
-    <value>Disegna le pagine sul server</value>
+    <value>ページをサーバーで描画</value>
   </data>
 
-  <!-- La barra dei tasti: i tasti che una tastiera telefonica non può inviare (vedi MainPage.xaml) -->
+  <!-- The keys bar: the keys a phone keyboard cannot send (see MainPage.xaml) -->
   <data name="RemoteKeys" xml:space="preserve">
-    <value>Tasti</value>
+    <value>キー</value>
   </data>
   <data name="KeyTab" xml:space="preserve">
     <value>Tab</value>
   </data>
   <data name="KeyEnter" xml:space="preserve">
-    <value>Invio</value>
+    <value>Enter</value>
   </data>
   <data name="KeyEscape" xml:space="preserve">
     <value>Esc</value>
@@ -419,6 +419,6 @@
     <value>&#x2192;</value>
   </data>
   <data name="KeyBarClose" xml:space="preserve">
-    <value>Chiudi</value>
+    <value>閉じる</value>
   </data>
 </root>

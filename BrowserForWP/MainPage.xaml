@@ -113,15 +113,25 @@
                 </Border>
             </Grid>
 
-            <TextBlock Grid.Row="3" x:Name="ErrorText" TextWrapping="Wrap"
-                       Margin="8,2" Opacity="0.9" Visibility="Collapsed"/>
+            <Grid Grid.Row="3" Margin="8,2">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
 
-            <!-- Shares row 3 with ErrorText, right-aligned: the Loading/Done status
-                 goes here so the two localized strings in the catalogue have a
-                 real consumer. -->
-            <TextBlock Grid.Row="3" x:Name="StatusText" TextWrapping="NoWrap"
-                       Margin="8,2" Opacity="0.6" HorizontalAlignment="Right"
-                       VerticalAlignment="Top"/>
+                <TextBlock Grid.Column="0" x:Name="ErrorText" TextWrapping="Wrap"
+                           Opacity="0.9" Visibility="Collapsed"/>
+
+                <!-- Shares the error row, right-aligned: the Loading/Done status
+                     goes here so the two localized strings in the catalogue have a
+                     real consumer. The retry button appears beside it, only while
+                     an error is shown. -->
+                <TextBlock Grid.Column="1" x:Name="StatusText" TextWrapping="NoWrap"
+                           Margin="8,0,0,0" Opacity="0.6" VerticalAlignment="Top"/>
+                <Button Grid.Column="2" x:Name="RetryButton" Click="RetryButton_Click"
+                        Visibility="Collapsed" Margin="6,0,0,0"/>
+            </Grid>
 
             <ScrollViewer Grid.Row="4" Margin="8"
                           HorizontalScrollBarVisibility="Auto"
@@ -132,9 +142,11 @@
                     <Button x:Name="ReloadButton" Click="ReloadButton_Click" Margin="0,0,6,0"/>
                     <Button x:Name="StopButton" Click="StopButton_Click" Margin="0,0,6,0"/>
                     <Button x:Name="TabsButton" Click="TabsButton_Click" Margin="0,0,6,0"/>
-                    <Button x:Name="FindButton" Click="FindButton_Click" Margin="0,0,6,0"/>                        <Button x:Name="ReadingButton" Click="ReadingButton_Click" Margin="0,0,6,0"/>
-                        <Button x:Name="RemoteKeysButton" Click="RemoteKeysButton_Click" Margin="0,0,6,0"/>
-                        <Button x:Name="ShareButton" Click="ShareButton_Click" Margin="0,0,6,0"/>
+                    <Button x:Name="FindButton" Click="FindButton_Click" Margin="0,0,6,0"/>
+                    <Button x:Name="ReadingButton" Click="ReadingButton_Click" Margin="0,0,6,0"/>
+                    <Button x:Name="RemoteKeysButton" Click="RemoteKeysButton_Click" Margin="0,0,6,0"/>
+                    <Button x:Name="ShareButton" Click="ShareButton_Click" Margin="0,0,6,0"/>
+                    <Button x:Name="SavePageButton" Click="SavePageButton_Click" Margin="0,0,6,0"/>
                     <Button x:Name="SecurityDetailsButton" Click="SecurityDetailsButton_Click" Margin="0,0,6,0"/>
                     <Button x:Name="SettingsButton" Click="SettingsButton_Click"/>
                 </StackPanel>
@@ -176,9 +188,20 @@
                     <TextBlock x:Name="HomepageLabel" Margin="0,8,0,4"/>
                     <TextBox x:Name="HomepageBox" Width="280" InputScope="Url"
                              LostFocus="HomepageBox_LostFocus"/>
-                    <TextBlock x:Name="SearchEngineLabel" Margin="0,8,0,4"/>
-                    <ComboBox x:Name="SearchEnginePicker" Width="280"
-                              SelectionChanged="SearchEnginePicker_SelectionChanged"/>
+
+                    <!-- Per-site display: applies to the current host only. -->
+                    <TextBlock x:Name="SiteHostText" Margin="0,8,0,4" Opacity="0.8"
+                               TextWrapping="Wrap"/>
+                    <TextBlock x:Name="TextSizeLabel" Margin="0,0,0,4"/>
+                    <StackPanel Orientation="Horizontal">
+                        <Button x:Name="TextSmallerButton" Content="−"
+                                Click="TextSmallerButton_Click" Margin="0,0,6,0"/>
+                        <Button x:Name="TextLargerButton" Content="+"
+                                Click="TextLargerButton_Click"/>
+                    </StackPanel>
+                    <CheckBox x:Name="ImagesToggle" Margin="0,4,0,0"
+                              Checked="ImagesToggle_Checked"
+                              Unchecked="ImagesToggle_Unchecked"/>
 
                     <TextBlock x:Name="EngineLabel" Margin="0,8,0,4"/>
                     <ComboBox x:Name="EnginePicker" Width="280"
@@ -237,6 +260,31 @@
                                 Click="RemoveFavoriteButton_Click"/>
                     </StackPanel>
 
+                    <TextBlock x:Name="SavedPagesTitle" FontSize="18" Margin="0,12,0,4"/>
+                    <ListBox x:Name="SavedPagesList" Height="80" Width="280"
+                             SelectionChanged="SavedPagesList_SelectionChanged"/>
+                    <Button x:Name="DeleteSavedButton" Margin="0,4,0,0"
+                            Click="DeleteSavedButton_Click"/>
+
+                    <TextBlock x:Name="SpeedDialTitle" FontSize="18" Margin="0,12,0,4"/>
+                    <ListBox x:Name="SpeedDialList" Height="80" Width="280"
+                             SelectionChanged="SpeedDialList_SelectionChanged"/>
+                    <StackPanel Orientation="Horizontal">
+                        <Button x:Name="SpeedDialAddButton" Margin="0,4,6,0"
+                                Click="SpeedDialAddButton_Click"/>
+                        <Button x:Name="SpeedDialRemoveButton" Margin="0,4,0,0"
+                                Click="SpeedDialRemoveButton_Click"/>
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                        <Button x:Name="BackupButton" Margin="0,0,6,0"
+                                Click="BackupButton_Click"/>
+                        <Button x:Name="RestoreButton" Margin="0,0,0,0"
+                                Click="RestoreButton_Click"/>
+                    </StackPanel>
+                    <TextBlock x:Name="BackupStatus" TextWrapping="Wrap"
+                               Opacity="0.8" Margin="0,4,0,0"/>
+
                     <Button x:Name="DiagnosticsButton" Margin="0,12,0,6"
                             Click="DiagnosticsButton_Click"/>
                     <Button x:Name="CloseSettingsButton" Click="CloseSettingsButton_Click"/>
@@ -284,14 +332,10 @@
                     <TextBlock x:Name="PinStatus" TextWrapping="Wrap"
                                Opacity="0.8" Margin="0,4,0,8"/>
 
-                    <Button x:Name="ParsePageButton" Margin="0,8,0,6"
-                            Click="ParsePageButton_Click"/>
-                    <TextBlock x:Name="ParseResult" TextWrapping="Wrap"
-                               FontFamily="Consolas" FontSize="12"
-                               MaxHeight="220" Margin="0,0,0,8" Opacity="0.85"/>
-                    <!-- The native preview that used to live here is gone. Rendering a
-                         page is no longer a diagnostic: it is an engine, chosen in
-                         Settings, and it draws into ContentHost like any other page. -->
+                    <!-- The IE-mode check stays: it is the instrument behind the
+                         documented "IE-adaptation is closed" claim. The parse-page
+                         demo that lived here is gone; rendering over the app's own
+                         transport is what the engine picker in Settings is for. -->
                     <Button x:Name="IeModeButton" Margin="0,0,0,6"
                             Click="IeModeButton_Click"/>
                     <TextBlock x:Name="IeModeResult" TextWrapping="Wrap"
@@ -302,6 +346,24 @@
                             Click="DiagnosticsBackButton_Click"/>
                 </StackPanel>
                 </ScrollViewer>
+            </Border>
+        </Grid>
+
+        <Grid x:Name="OfflineOverlay" Visibility="Collapsed"
+              Background="#CC000000">
+            <Border Background="{ThemeResource ApplicationPageBackgroundThemeBrush}"
+                    Padding="16" Margin="24" CornerRadius="8"
+                    VerticalAlignment="Center">
+                <StackPanel>
+                    <TextBlock x:Name="OfflineTitle" FontSize="18" Margin="0,0,0,8"
+                               TextWrapping="Wrap"/>
+                    <ScrollViewer MaxHeight="420">
+                        <TextBlock x:Name="OfflineBody" TextWrapping="Wrap"
+                                   FontSize="16" LineHeight="24"/>
+                    </ScrollViewer>
+                    <Button x:Name="OfflineBackButton" Margin="0,8,0,0"
+                            Click="OfflineBackButton_Click"/>
+                </StackPanel>
             </Border>
         </Grid>
 

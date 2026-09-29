@@ -1,6 +1,6 @@
 ' BrowserForWP — persisted history (pure, no WinRT dependency).
 '
-' Bounded to 100 entries; newest last. Serialization is one entry per line:
+' Bounded to 50 entries; newest last. Serialization is one entry per line:
 ' ticks + "|" + url + "|" + title (pipes in fields are stripped).
 
 Imports System.Collections.Generic
@@ -24,7 +24,7 @@ Namespace Storage
     ''' <summary>Bounded in-memory history with string serialization.</summary>
     Public NotInheritable Class HistoryStore
 
-        Public Const MaxEntries As Integer = 100
+        Public Const MaxEntries As Integer = 50
 
         Private ReadOnly _entries As New List(Of HistoryEntry)()
 

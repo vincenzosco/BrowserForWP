@@ -105,22 +105,23 @@ const main = readIfPresent('BrowserForWP/MainPage.xaml.vb');
 const enRes = readIfPresent('BrowserForWP/Strings/en-US/Resources.resw');
 const itRes = readIfPresent('BrowserForWP/Strings/it-IT/Resources.resw');
 
-check('the diagnostics view has a parse button', xaml.includes('ParsePageButton'));
-check('the parse handler exists', main.includes('ParsePageButton_Click'));
-check('the result block exists', xaml.includes('ParseResult'));
-check('the handler uses the TLS 1.3 fetcher', main.includes('NetDocumentFetcher'));
-check('the handler runs the pipeline', main.includes('BuildPage'));
-check('the handler dumps the tree', main.includes('DocumentDumper'));
-// This asserted `InlineStyleText` until that helper moved to
-// BoxTreeBuilder.PageCss, where its output is consumed and where a second
-// caller (the native engine) could reach it. The assertion is about the page's
-// own stylesheet reaching the tree builder, so it follows the move rather than
-// being deleted.
-check('the handler reads <style> text', main.includes('BoxTreeBuilder.PageCss'));
-for (const key of ['ParseThisPage', 'ParseNoDocument', 'ParseFailed', 'ParseBoxCount']) {
-  check(`${key} in en-US`, enRes.includes(`name="${key}"`));
-  check(`${key} in it-IT`, itRes.includes(`name="${key}"`));
+// ── wiring parity ─────────────────────────────────────────────────────────
+// The parse-page demo was removed to simplify diagnostics: rendering over the
+// app's own transport is what the engine picker chooses, not a diagnostics
+// button. The pipeline stays owned by the engine layer, and the shell must not
+// grow a second caller through it.
+check('the parse demo button is gone', !xaml.includes('ParsePageButton'));
+check('the parse handler is gone', !main.includes('ParsePageButton_Click'));
+check('the result block is gone', !xaml.includes('ParseResult'));
+check('the shell has no second tree-builder caller', !main.includes('BoxTreeBuilder.'));
+check('the shell has no second dumper caller', !main.includes('DocumentDumper.Dump('));
+for (const key of ['ParseThisPage', 'ParseFailed', 'ParseBoxCount']) {
+  check(`${key} gone from en-US`, !enRes.includes(`name="${key}"`));
+  check(`${key} gone from it-IT`, !itRes.includes(`name="${key}"`));
 }
+// ParseNoDocument stays: the native navigation-failure path still reports it.
+check('ParseNoDocument stays in en-US', enRes.includes('name="ParseNoDocument"'));
+check('ParseNoDocument stays in it-IT', itRes.includes('name="ParseNoDocument"'));
 
 // The IE-mode instrument is required by this plan's Task 1: without a control in
 // the diagnostics view, IeModeProbe ships unreachable and the record in
@@ -175,8 +176,8 @@ check('BoxTreeBuilder now owns the page stylesheet collector',
   builder.includes('Function PageCss('));
 check('MainPage no longer owns it',
   main.length === 0 || !main.includes('Function InlineStyleText('));
-check('MainPage calls the tree builder for it',
-  main.length === 0 || main.includes('BoxTreeBuilder.PageCss('));
+check('MainPage has no second tree-builder caller',
+  main.length === 0 || !main.includes('BoxTreeBuilder.'));
 check('DocumentDumper.vb exists', readIfPresent('BrowserForWP.Core/Diagnostics/DocumentDumper.vb').length > 0);
 
 console.log(`\n${checks - failures}/${checks} boxtree checks passed.`);

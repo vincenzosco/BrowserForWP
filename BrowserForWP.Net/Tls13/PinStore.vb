@@ -14,7 +14,7 @@ Namespace Tls13
         Private ReadOnly _pins As New Dictionary(Of String, String)()
 
         ''' <summary>Maximum pins kept (speed + memory).</summary>
-        Public Const MaxPins As Integer = 50
+        Public Const MaxPins As Integer = 25
 
         Public ReadOnly Property Count As Integer
             Get
