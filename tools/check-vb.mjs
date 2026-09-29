@@ -720,6 +720,38 @@ function checkResourceParity() {
   if (!anyBad) {
     ok(`${languages.join(' / ')} define identical key sets (${reference.keys.length} keys each)`);
   }
+
+  // ── The map NAME, which is a different question from parity ──────────────
+  //
+  // Parity says the two languages agree. It said nothing about whether the code
+  // asks for a map that exists, and that gap shipped: Localizer asked for
+  // "Strings/Resources" while the built resources.pri holds the strings in a map
+  // named after the .resw FILE, so every lookup threw ResourceMap Not Found and
+  // the UI painted raw keys such as "EngineLabel".
+  //
+  // The map name is inferred from the file name here because the repository
+  // cannot read resources.pri -- it is a build output, one per platform, and not
+  // committed. The inference was MEASURED, not assumed: the maps in the built PRI
+  // are exactly Resources, Files, Polyfill and Assets, on Debug/AnyCPU as well as
+  // x86/Debug and ARM/Debug (docs/MAINTAINING.md, Round 18). If the build is ever
+  // made to index these files under another name, this check fails and sends the
+  // reader to that measurement.
+  // Both languages are the SAME map, resolved per language qualifier, so the two
+  // .resw files collapse to one name.
+  const mapNames = [...new Set(reswFiles.map((f) => path.basename(f, '.resw')))];
+  const localizerPath = path.join(ROOT, 'BrowserForWP.Localization', 'Localizer.vb');
+  const localizer = fs.readFileSync(localizerPath, 'utf8');
+  const mapConstant = localizer.match(/Private Const ResourceMap As String = "([^"]+)"/);
+  if (!mapConstant) {
+    fail('resw', 'BrowserForWP.Localization/Localizer.vb',
+         'no ResourceMap constant found; the resource map name is not readable from this file');
+  } else if (!mapNames.includes(mapConstant[1])) {
+    fail('resw', 'BrowserForWP.Localization/Localizer.vb',
+         `asks for map "${mapConstant[1]}", but the .resw files become the map(s) ` +
+         mapNames.map((m) => `"${m}"`).join(', '));
+  } else {
+    ok(`the map the code asks for ("${mapConstant[1]}") is the map the .resw files become`);
+  }
 }
 
 // ── 7. XAML handler wiring ─────────────────────────────────────────────────

@@ -21,14 +21,25 @@ Namespace Localization
 
         ''' <summary>
         ''' Resource map name. The .resw files are at
-        ''' BrowserForWP/Strings/&lt;tag&gt;/Resources.resw, which the platform
-        ''' exposes under the map name "Strings/Resources".
+        ''' BrowserForWP/Strings/&lt;tag&gt;/Resources.resw, and the map the build
+        ''' makes for them is named after the FILE -- "Resources" -- with the
+        ''' language folder acting as a qualifier rather than as part of a path.
+        '''
+        ''' MEASURED, not assumed, 2026-09-29: the resource maps inside the built
+        ''' resources.pri are exactly 'Resources', 'Files', 'Polyfill' and 'Assets',
+        ''' on Debug/AnyCPU as well as x86/Debug and ARM/Debug. This constant used to
+        ''' read "Strings/Resources", which is a map that does not exist: every
+        ''' lookup threw ResourceMap Not Found, the error is swallowed by design, so
+        ''' the app ran with raw keys as labels -- "EngineLabel", "KeyBarClose" --
+        ''' and about fifty first-chance exceptions per launch in the debugger.
+        ''' tools/check-vb.mjs now compares this name against the names the .resw
+        ''' files become, which is the question parity was not asking.
         '''
         ''' The angle brackets must be escaped: a doc comment is parsed as XML, so an
         ''' unescaped &lt;tag&gt; opens an element and the closing &lt;/summary&gt;
         ''' then mismatches (BC42304).
         ''' </summary>
-        Private Const ResourceMap As String = "Strings/Resources"
+        Private Const ResourceMap As String = "Resources"
 
         Private Shared _override As String
         Private Shared _current As String
