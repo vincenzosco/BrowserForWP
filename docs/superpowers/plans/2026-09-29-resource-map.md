@@ -383,8 +383,36 @@ Then `"Resources"` is not the name the runtime resolves either, and the next mea
 ```bash
 rm -f emulator.png
 git add docs/MAINTAINING.md .agents/skills/browserforwp/SKILL.md
-git commit -m "docs: a resource map that does not exist, measured in the emulator"
+git commit -m "docs: a resource map that does not exist, measured on a real device"
 ```
+
+---
+
+**Adjustment, made while executing this task (2026-09-29).** The emulator steps
+above were written on an assumption that does not hold on this host, and the run
+happened on the handset instead:
+
+- **No emulator is possible.** The WP8.1 emulator is a Hyper-V VM and Parallels on
+  Apple silicon cannot nest it: `AppDeployCmd /installlaunch ... /targetdevice:3`
+  answers `PrlJob_GetResult: Invalid argument`. `XDE.exe /?` opens a GUI window and
+  blocks. The owner confirmed the constraint directly.
+- **The deploy that produced the evidence was F5 to Device**, which is how the
+defect was originally found.
+- **The screen was read with `prlctl capture` + OCR, not with a handset screenshot.**
+  `prlctl exec` runs in session 0, where a `CopyFromScreen` capture is blank (measured:
+  1024x768, 3 KB), so the guest display was captured with `prlctl capture` (2940x1846)
+  and read with a 30-line Swift/Vision script that was first validated against an
+  image whose text was known. That is how the Output window was inspected without
+  asking anyone to transcribe it.
+- **The XAML designer cannot answer this question at all** (it does not run
+  code-behind; all 106 strings come from `Localizer.Get`), and it is crashing with
+  `System.Runtime.Remoting.RemotingException` on this host anyway.
+- **The result:** no `ResourceMap Not Found` in the debug output, and the labels read
+  as words ("Cerca o digita un indirizzo", "Vai") on the device.
+
+The section this task would have written also came out with a different shape: the
+evidence is about the *app*, so it closes none of the blank rows in "The remote
+engine, verified by hand" -- which is stated there rather than left to inference.
 
 ---
 

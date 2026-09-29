@@ -1968,6 +1968,92 @@ Release `Any CPU` (the Release one also producing the package).
 file changed -- and it rewrites project files, which is the finding above.
 **Not verified:** anything on a handset, unchanged.
 
+### Round 18 -- a resource map that does not exist, and the first look at a real device
+
+The app ran, loaded pages, and had no working UI strings. `Localizer` asked WinRT
+for the resource map `"Strings/Resources"`, which does not exist, so every lookup
+threw `ResourceMap Not Found`, the exception was swallowed by design, and the labels
+were the raw keys. On the handset the debug output showed about fifty of those
+exceptions per launch -- one per string, because a failed load was not remembered.
+
+**The measurement came first, because the name exists nowhere in the source.** The
+map names live inside the built package. Extracting them (UTF-16 strings inside
+`BrowserForWP/bin/<platform>/Debug/resources.pri`; macOS `strings` sees only ASCII,
+and the Windows 8.1 SDK's `makepri.exe dump` refuses a phone PRI with `PRI file is
+invalid`, 0xdef00101) gives the same four names on Debug/AnyCPU, x86/Debug and
+ARM/Debug:
+
+```
+Resources    Files    Polyfill    Assets
+```
+
+No `Strings`, and no `Strings/Resources`. The strings live in the map named after
+the `.resw` FILE, and the language folder is a qualifier rather than a path. That is
+what the constant says now.
+
+**What guards it.** `tools/check-vb.mjs` group 6 compared the two languages' key
+sets and nothing else -- parity cannot see a map that does not exist.
+`Localizer.ResourceMap` is now required to be one of the map names the `.resw` files
+become. Mutation: putting `"Strings/Resources"` back makes the check report it.
+
+**The second defect, which is why the output was a flood rather than a line.**
+`Loader` constructed the `ResourceLoader` lazily and left the field empty when the
+construction threw, so the next lookup tried again. `TryCreateLoader()` records
+`_loaderUnavailable` now and `Loader` consults it: a broken map costs one exception
+and then returns the key, which is what `[Get]` already documented as its behaviour.
+The check for that is a **shape** contract and says so -- the VB does not run
+off-device, so the behaviour is evidenced below rather than by the check.
+
+**Two things the compiler and the plan itself got wrong.**
+
+- The first version of `[Get]` read `Dim loader = Loader`. VB is case-insensitive, so
+  that local shadows the property it is reading: BC30980, then BC30574 and BC30512
+  under `Option Strict On`, in all four configurations. The local is `resolver` now.
+  Nothing in this repository could have caught it, which is the standing argument for
+  the guest build being the arbiter.
+- **The plan's own mutation step was dangerous.** It restored the file with
+  `git checkout --`, which restores the last COMMIT -- so it deleted the uncommitted
+  change it existed to protect, on its first execution. Both mutation steps copy to
+  `/tmp` first and `diff` the restore now. A plan is an artifact like any other, and
+  this one was wrong in a way that only executing it revealed.
+
+**Measured on a real handset, and this is the first time anything here has been.**
+Deployed with F5 to a Windows Phone 8.1 device, the debug output contains **no
+`ResourceMap Not Found` line at all**, and the labels are words -- "Cerca o digita un
+indirizzo", "Vai" -- instead of keys. The map resolves, the strings arrive, and the
+language is the phone's.
+
+**What that run is NOT evidence about.** It is evidence about the app, not about the
+remote engine: the page was drawn with the device's own engine, and no row of
+§ "The remote engine, verified by hand" was filled, because the wording on the status
+line was not read off that screen. Those rows stay blank. What has changed is that
+the handset now runs the app, so pasting a device token is the next experiment rather
+than a leap.
+
+**Emulators are not available on this development host, and the workarounds are
+worth knowing.** The WP8.1 emulator is a Hyper-V VM, which Parallels on Apple silicon
+cannot nest: asking `AppDeployCmd` to start one from a non-interactive session fails
+with `PrlJob_GetResult: Invalid argument`, and `prlctl exec` runs in **session 0**,
+where a `CopyFromScreen` capture is a blank 1024x768 image (measured). Two things DO
+work and carried this round: `prlctl capture <vm> --file <png>` photographs the
+guest's display whatever session is in front, and macOS Vision OCR (a 30-line Swift
+script, validated against an image whose text was known) reads it -- which is how the
+debug output above was read without asking anyone to transcribe it.
+
+**The XAML designer is not an oracle for this, and it is broken anyway.** It crashes
+with `System.Runtime.Remoting.RemotingException` and "Designer process terminated
+unexpectedly"; and even healthy it would not answer this question, because it does
+not run code-behind, and all 106 UI strings in `MainPage` come from `Localizer.Get`
+there. `x:Uid` appears zero times in the XAML.
+
+**Verified:** `node tools/check-vb.mjs` -> `16 check groups run, 0 finding(s)`, with
+the map-name check mutation-tested; four solution configurations in the guest,
+`BUILD_EXIT=0` (Debug/ARM, Debug/x86, Release/ARM, Release/x86) with no `error BC`
+lines; and on the handset, no `ResourceMap Not Found` in the debug output with the
+labels reading as words.
+**Not verified:** the remote engine on a device (the table of blank rows) and the
+audio path. Both as before.
+
 ## The loop
 
 Every change follows five steps, in order. The canonical version lives in
@@ -2001,6 +2087,7 @@ What is and is not covered:
 | `tools/proto/core-logic.mjs` | A transliteration of `CoreLogicTests.vb`. 72 assertions, exit 1 on failure. | `node`, on any machine. **This is what actually runs those assertions.** |
 | `tools/proto/remote-input.mjs` | The remote input path as source contracts: one hidden `TextBox` built once, the `SemaphoreSlim` gate over every write to the stream, the rotation that moves both viewports and sends `RESIZE`, the eight key names the keys bar offers, that every label has a key in both `.resw` files, and — since Round 14 — that **a tap is not a request to type** and that the soft keyboard is raised only by the page's own answer, which the engine must route to the screen. Eleven checks, plus `--probe`, which plants each defect (twelve mutations) and requires its check to refuse it. | `node`, on any machine. |
 | `tools/proto/remote-protocol.mjs` | The render protocol's wire format: header, every encoder and decoder, the frame splitter, and the AEAD seal both ways, checked byte-for-byte against `protocol/vectors.json` — which the SERVER's own code produced. The only statement of the protocol that neither implementation wrote. 100 checks, including both values of `FOCUS` and its refusal of a third. | `node`, on any machine. |
+| `BrowserForWP/Strings/**/Resources.resw`, and the map name in `BrowserForWP.Localization/Localizer.vb` | Two languages, one key set (61 keys), AND the name of the resource map the code asks WinRT for — the question parity was not asking, and one whose wrong answer runs silently. Round 18. | `node tools/check-vb.mjs`, group 6. The map-name inference is justified by a measurement of the built `resources.pri`, recorded in Round 18, because the PRI itself is a per-platform build output and is not committed. |
 | `tools/proto/remote-servers.mjs` | `RemoteServers.vb`: url normalisation, the primary/secondary order, duplicate collapsing, and the source contract that Core holds resource keys and not prose. | `node`, on any machine. |
 | `tools/proto/engine-choice.mjs` | The `EngineChoice` decision table, plus the source contract around it: the constants by name, and the reasons as resource keys rather than sentences. | `node`, on any machine. |
 | `tools/check-vb.mjs` | 17 categories / 16 check groups over every `.vb`, `.vbproj`, `.xaml` and `.resw`, including every `{ThemeResource}` key, every project's flavour GUID and the factory GUID and separators of every `BrowserForWP.sln` entry, (group 13) doc-comment structure, (group 15) every privileged API name and every manifest capability that would ask the platform for something it cannot grant, (group 16) every API whose capability the manifest fails to declare, and (group 17) every declaration that names a VB keyword. | `node`, on any machine. |

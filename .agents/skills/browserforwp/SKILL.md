@@ -283,10 +283,39 @@ verified if you skipped its command.
 | TLS / DoH / sockets | Deploy to handset, run **Diagnostics → TLS probe** | reports negotiated `TLS1.3` |
 
 The two VB test projects under `tests/` are compiled by the guest build but
-**nothing executes them** — an ARM class library cannot run on the desktop and
-there is no handset or emulator. `node tools/proto/core-logic.mjs` is the
-executable half of `CoreLogicTests.vb`; keep the two in step. Never report the
-`tests/` projects as "tests passing".
+**nothing executes them** — an ARM class library cannot run on the desktop, and
+there is no emulator on this host. There IS a handset (the owner deploys with F5 to
+Device), so "no device" is not an excuse for a UI change; see "Reading the device
+without touching it" below. `node tools/proto/core-logic.mjs` is the executable half
+of `CoreLogicTests.vb`; keep the two in step. Never report the `tests/` projects as
+"tests passing".
+
+**Emulators do not work here, and it is worth not re-discovering why.** The WP8.1
+emulator is a Hyper-V VM and Parallels on Apple silicon cannot nest it: `AppDeployCmd`
+asked to start one from a non-interactive session fails with
+`PrlJob_GetResult: Invalid argument`. Deploy to the handset instead.
+
+**Reading the device without touching it.** `prlctl exec` runs in **session 0**, so a
+PowerShell `CopyFromScreen` capture from there returns a blank 1024x768 image
+(measured, Round 18). Two things do work, and they are how a handset run gets read
+from a terminal:
+
+```bash
+# the guest's display, whatever session is in front -- a 2940x1846 screenshot
+prlctl capture "{66a2f493-162c-4b3f-ba40-0a26020cc818}" --file /tmp/guest.png
+# and macOS Vision OCR to turn it into text (validated against a known image first)
+swift /tmp/ocr.swift /tmp/guest.png
+```
+
+That pair read Visual Studio's Output window off the screen and answered whether the
+`ResourceMap Not Found` flood was gone, without asking anyone to transcribe it. The
+phone's own screen is NOT in that capture: for anything visible only on the handset,
+the owner reads it.
+
+**The XAML designer is not an oracle.** It does not run code-behind, and every UI
+string in `MainPage` is set there from `Localizer.Get` (`x:Uid` is used zero times),
+so the designer can neither show nor check them. It is also currently crashing with
+`System.Runtime.Remoting.RemotingException`.
 
 `node tools/gen-vectors.mjs` is the fastest real signal available off-Windows:
 it recomputes the algorithms from the RFCs and aborts on any mismatch. If you
@@ -443,7 +472,12 @@ Worked example: *add a "desktop site" toggle.*
 7. **Localize any new user-visible string.** Add the key to **both**
    `BrowserForWP/Strings/en-US/Resources.resw` and
    `BrowserForWP/Strings/it-IT/Resources.resw`. A key present in only one
-   language is a bug — see "Adding a language" below.
+   language is a bug — see "Adding a language" below. Do not touch the map name:
+   the `.resw` file name IS the resource map name (`Resources`), the language
+   folder is only a qualifier, and `Localizer.ResourceMap` must equal it — the
+   check in `tools/check-vb.mjs` group 6 enforces exactly that, because asking for
+   a map that does not exist is silent: every string falls back to its key and the
+   debugger fills with `ResourceMap Not Found` (Round 18).
 8. **Wire the UI.** Add the control to `MainPage.xaml`, its handler to
    `MainPage.xaml.vb`, and bind the label to the resource key.
 9. **Verify.** Build in the guest, then deploy:
