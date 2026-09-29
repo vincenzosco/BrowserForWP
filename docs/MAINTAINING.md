@@ -63,7 +63,8 @@ node tools/proto/tls13.mjs cloudflare.com
 node tools/proto/core-logic.mjs
 
 # The remote render servers: a primary, a secondary tried only when the primary
-# cannot be reached, and no third option. Must print "19/19 checks passed".
+# cannot be reached, and no third option, plus Ready -- the rule that says whether
+# the hosted engine can be used at all. Must print "24/24 checks passed".
 # tools/proto/textmeasure.mjs and boxlayout.mjs used to sit here; they were the
 # referees for the on-device renderer and went with it (see "Round 9"), so this
 # slot is where a browser decides WHERE to render instead of HOW.
@@ -87,7 +88,7 @@ node tools/proto/remote-input.mjs --probe
 
 # The engine-choice rule: what the automatic fallback decides, and the row that
 # matters most — an absent measurement is never grounds for switching engines.
-# Must print "23/23 checks passed".
+# Must print "34/34 checks passed".
 node tools/proto/engine-choice.mjs
 
 # The shell and delivery guards that arrived with the merged browser shell.
@@ -687,7 +688,7 @@ probe and the pin store all exist and are wired. What remains is this.
    the Round 4 gap — but no runner invokes `RunAll()`. A WP8.1 ARM class library
    cannot run on the desktop, and there is no handset and no emulator, so
    **"compiled" is not "tested"**. The assertions now run off-device through
-   `tools/proto/core-logic.mjs` (66 assertions), a transliteration of
+   `tools/proto/core-logic.mjs` (72 assertions), a transliteration of
    `CoreLogicTests.vb` that must be kept in step with it. That mirror exists
    because the VB suite's first defect was invisible without execution: an
    assertion naming the heavy `duckduckgo.com` search URL that the lite-first
@@ -896,11 +897,22 @@ the interface, so the shell wires whichever engine it built and therefore knows
     the soft-keyboard proxy or the audio path has run against a live session.
     `docs/MAINTAINING.md` § "The remote engine, verified by hand" is the table, and
     its rows are blank.
-16. **The server bakes in no address, and that is deliberate.** Shipping a default
-    would send every page, and every password, through a machine the user did not
-    choose; the engine stays off until an address and a token are configured. One
-    line in `AppSettings` is all a default would need, and that line is not written
-    on purpose.
+16. **CLOSED in Round 13 — the address IS shipped, by decision, and the cost is
+    written down.** This item used to say the opposite: a default would send every
+    page, and every password, through a machine the user did not choose, so the
+    engine stayed off until an address and a token were configured. The owner
+    decided the browser must render modern pages without being set up first, so
+    `AppSettings.DefaultHostedUrl` is the project's own server, the engine is the
+    default one, and the switch ships on. What keeps that from being a silent
+    transfer of every page is the part the item could not have anticipated:
+    `RemoteServers.Ready` means a fresh install is NOT ready (no device token),
+    so its first page is drawn on the phone; the status line names the engine that
+    drew each page; Settings carries the address, the switch and the notice; and
+    README and ARCHITECTURE Law 5 say who can read what. What is still open is the
+    pair this item always implied: **nobody has run a build against that server**
+    (no token for it exists here, and no Docker on this host), so its reachability
+    and its identity are unverified -- and the channel is still unpinned
+    (item 12).
 17. **The page never tells the phone that a field took focus.** Nothing in the 23
     message types says "focus moved", so the client cannot know whether a tap
     landed on a text box, and **the soft keyboard therefore comes up on every
@@ -1482,6 +1494,83 @@ line endings and a `<Folder Include="My Project\" />` item appear in whichever
 Revert them (`git checkout -- <file>`), or a round that only meant to change the
 solution will also rewrite four project files.
 
+### Round 13 — the hosted engine becomes the default engine
+
+**Asked for:** the browser has to render modern pages without being set up first,
+so the hosted engine is the default one, pointed at the server this project runs.
+
+**What changed, and what deliberately did not.** The default engine is
+`EngineChoice.Remote`, the switch ships on, and `AppSettings.DefaultHostedUrl` is
+`https://34.132.106.149`. What did NOT change is the part that makes a default
+honest: **wanting the hosted engine is not having it.** `EngineChoice.Decide` now
+takes a `hostedReady` input and consults it before either path that can return the
+hosted engine, `RemoteServers.Ready` defines that input as *switch on, an address,
+and a token for that address*, and a fresh install is therefore ready at nothing
+-- it has the address and no token, because a token is issued per device by
+`bfwp-device add` and pasted in by hand. Its first page is drawn on the phone,
+with the reason in the status line.
+
+The decision table, which is now the file's whole contract:
+
+| Setting | Usable hosted server | Measurement | Engine |
+| --- | --- | --- | --- |
+| Trident | any | any | Trident |
+| Remote (the default) | yes | any | the hosted server |
+| Remote | no | any | Trident, reason `EngineReasonRemoteNotConfigured` |
+| Auto | yes | no measurement | Trident |
+| Auto | yes | below the threshold | Trident |
+| Auto | yes | at or past the threshold | the hosted server |
+| Auto | no | at or past the threshold | Trident, reason `EngineReasonRemoteNotConfigured` |
+
+**The fallback is announced, not silent.** When the hosted engine reports
+`EngineReasonRemoteNotConfigured` or `EngineReasonRemoteUnreachable`, those two
+keys are not page errors: they are the default engine failing to be an engine, and
+`OnRemoteNavigated` hands the page to the on-device engine. The status line says
+which engine drew it and why the other one did not, because a browser that quietly
+switches to a different renderer is the shape of lie this repository keeps finding.
+`IsHostedEngineUnusable` names the two keys in one place, and `engine-choice.mjs`
+asserts that the shell and the rule still agree on them.
+
+`RemoteNavigationResult` grew the consequence: **a failure carries the page that
+was asked for.** It used to carry an empty url, and the fallback would then have
+read `_session.ActiveTab.Url` -- the PREVIOUS page -- and loaded it, plausibly and
+wrongly. The engine knows what it was asked to render; it now says so.
+
+**One definition instead of two.** The settings-to-plain-data snapshot existed in
+RemoteEngine and was about to be written a second time in the shell;
+`AppSettings.RemoteSettings()` is now the one copy, and `RemoteServers.Ready`
+consumes it. Two copies of "which server did the person just configure" is how the
+engine and the settings screen come to disagree.
+
+**An upgrade does not move anybody onto the server.** The defaults are for a fresh
+install. A stored `remoteEnabled=0` with an empty address stays that way, so an
+install that predates this round keeps rendering exactly where it did, and the
+only way onto the hosted engine is a person choosing it or configuring it.
+
+**The referee could not see its own rule, and that is the round's real defect.**
+`tools/proto/engine-choice.mjs` is a transliteration, so it executes *its own* copy
+of `Decide`: the first version of it passed with the readiness branch DELETED from
+`EngineChoice.vb`, and the mutation is what exposed it. Four source-contract checks
+now pin the branch in the VB -- readiness consulted on both paths that can return
+the hosted engine, the reason key returned twice, and no "chosen in Settings"
+reason for a server that is not usable -- and both mutations are refused. A mirror
+that drifts reports green for behaviour the VB no longer has; that sentence is in
+this file already, and this round is the first time it was earned twice.
+
+**Verified:** `engine-choice.mjs` 34/34 with two mutations refused,
+`remote-servers.mjs` 24/24, `core-logic.mjs` 72 assertions, `check-vb.mjs` 16 groups
+over 17 categories and 0 finding(s), the other seventeen referees unchanged, six
+configurations `BUILD_EXIT=0` on the phone's toolchain, `devenv.com` loading and
+building all seven projects (`Build: 6 succeeded, 0 failed, 1 up-to-date`), and the
+handset rows this round adds to the table above -- which are still blank, because
+there is still no handset.
+**Not verified:** every claim that needs the phone. That the first page of a fresh
+install really is drawn by Trident, that pasting a token switches it, that a dead
+server falls back with the right words on screen: all of it is in the table above,
+unrun. The default is also not exercised against the real server
+(`34.132.106.149`): no device token exists for this host, and Docker is not
+installed here, so nothing in this round has ever spoken to it.
+
 ## The loop
 
 Every change follows five steps, in order. The canonical version lives in
@@ -1512,7 +1601,7 @@ What is and is not covered:
 | `tools/gen-vectors.mjs`, `tools/proto/*.mjs` | The executable prototypes. `gen-vectors.mjs` recomputes HKDF, X25519 and AES-GCM and asserts RFC 5869 / 7748 / 8448 and NIST CAVS vectors; `tls13.mjs` completes real handshakes against live servers. | `node`, on any machine. **This is the real crypto verification.** |
 | `tests/BrowserForWP.Crypto.Tests/` (`Vectors.generated.vb` + `VectorsSmokeTests.vb`) | Generated VB constants from those same vectors, plus length/shape checks. | **Compiled by the guest build; never executed.** |
 | `tests/BrowserForWP.Core.Tests/CoreLogicTests.vb` | Address normalisation, tab state, session/UA, settings, history, favourites, pin normalisation, hostname wildcards, language matching. | **Compiled by the guest build; never executed.** |
-| `tools/proto/core-logic.mjs` | A transliteration of `CoreLogicTests.vb`. 66 assertions, exit 1 on failure. | `node`, on any machine. **This is what actually runs those assertions.** |
+| `tools/proto/core-logic.mjs` | A transliteration of `CoreLogicTests.vb`. 72 assertions, exit 1 on failure. | `node`, on any machine. **This is what actually runs those assertions.** |
 | `tools/proto/remote-input.mjs` | The remote input path as source contracts: one hidden `TextBox` built once, the `SemaphoreSlim` gate over every write to the stream, the rotation that moves both viewports and sends `RESIZE`, the eight key names the keys bar offers, and that every label has a key in both `.resw` files. Seven checks, plus `--probe`, which plants each defect and requires its check to refuse it. | `node`, on any machine. |
 | `tools/proto/remote-protocol.mjs` | The render protocol's wire format: header, every encoder and decoder, the frame splitter, and the AEAD seal both ways, checked byte-for-byte against `protocol/vectors.json` — which the SERVER's own code produced. The only statement of the protocol that neither implementation wrote. 91 checks. | `node`, on any machine. |
 | `tools/proto/remote-servers.mjs` | `RemoteServers.vb`: url normalisation, the primary/secondary order, duplicate collapsing, and the source contract that Core holds resource keys and not prose. | `node`, on any machine. |
@@ -1550,9 +1639,10 @@ Ran it: 2026-09-29. Device: none available. Server: none reachable.
 
 | Step | Expected | Result |
 | --- | --- | --- |
-| Choose "Server" in Settings with no url set | The engine says it is not configured, and nothing is sent anywhere. | |
-| Set a url but no token | The primary is tried, then the secondary, then the engine reports the servers unreachable. | |
-| Paste the token from `bfwp-device add` | The page appears. | |
+| Fresh install, nothing configured by hand | The address is the hosted server and the token is empty, so the page is drawn **on the phone** and the status line says the hosted server is not ready. Nothing is sent anywhere. | |
+| Paste the token from `bfwp-device add` | The next page is drawn by the server, and the status line names the server that answered. | |
+| Clear the address, keep the token | Back to the device-rendered state, with the reason on screen. | |
+| Stop the server, then navigate | The page is drawn on the device and the status line says the hosted server did not answer -- after the secondary, if one is set. | |
 | Type a url in the address bar | The page is drawn by the server. | |
 | Tap a link | The navigation happens on the server and a new frame arrives. | |
 | Scroll | The scroll happens server-side; the frame follows. | |
@@ -1569,8 +1659,8 @@ Ran it: 2026-09-29. Device: none available. Server: none reachable.
 | --- | --- |
 | The input path holds its contracts (one field, gated writes, rotation, key names) | `node tools/proto/remote-input.mjs` → `7/7`, and `--probe` refuses all 7 planted defects |
 | The wire format reproduces the server's own bytes | `node tools/proto/remote-protocol.mjs` → `91/91 checks passed` |
-| The primary/secondary rule and url normalisation hold | `node tools/proto/remote-servers.mjs` → `19/19`; `node tools/proto/core-logic.mjs` → `66 assertions, 0 failure(s)` |
-| The engine decision table is unchanged | `node tools/proto/engine-choice.mjs` → `23/23` |
+| The primary/secondary rule, url normalisation and the readiness rule hold | `node tools/proto/remote-servers.mjs` → `24/24`; `node tools/proto/core-logic.mjs` → `72 assertions, 0 failure(s)` |
+| The engine decision table holds, including the hosted default and its fallback | `node tools/proto/engine-choice.mjs` → `34/34`, and the two mutations that remove the readiness branch are refused |
 | No mechanical defect of the seventeen checked kinds | `node tools/check-vb.mjs` → `16 check groups run, 0 finding(s)` |
 | It compiles, for real, on the phone's toolchain | Six configurations, `BUILD_EXIT=0`: Debug/ARM, Debug/x86, Release/ARM, Release/x86 as solution builds, and Debug/Release as `Any CPU` app-project builds. Only the two deliberate `BC40000` warnings. |
 

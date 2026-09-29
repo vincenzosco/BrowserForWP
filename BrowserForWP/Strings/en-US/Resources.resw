@@ -279,11 +279,14 @@
   <data name="EngineReasonSettingRemote" xml:space="preserve">
     <value>Chosen in Settings: the server you configured draws these pages and can read everything you read.</value>
   </data>
+  <data name="EngineFallbackOnDevice" xml:space="preserve">
+    <value>Drawn on the device, by the system engine.</value>
+  </data>
   <data name="EngineReasonRemoteSecondary" xml:space="preserve">
     <value>The primary server did not answer, so the secondary is being used.</value>
   </data>
   <data name="EngineReasonRemoteNotConfigured" xml:space="preserve">
-    <value>No server is configured. Add one in Settings, under Server.</value>
+    <value>The hosted server is not ready: it needs an address and this device's token. Open Settings, under Server.</value>
   </data>
   <data name="EngineReasonRemoteUnreachable" xml:space="preserve">
     <value>Neither server answered.</value>
@@ -337,7 +340,7 @@
   </data>
   <!-- Remote server: where the pages are drawn, and what that costs -->
   <data name="RemoteNotice" xml:space="preserve">
-    <value>The server draws the pages, so whoever runs it can read everything you read, passwords included. Leave this off unless you run the server or trust who does.</value>
+    <value>The server draws the pages, so whoever runs it can read everything you read, passwords included. This build ships pointed at the project's own hosted server, with the server engine as its default: switch it off to keep every page on this phone, or replace the address with a server you run.</value>
   </data>
   <data name="RemoteServerLabel" xml:space="preserve">
     <value>Server address</value>

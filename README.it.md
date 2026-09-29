@@ -1,7 +1,10 @@
 # BrowserForWP
 
-**Un browser con trasporto moderno per Windows Phone 8.1 — tutto sul telefono,
-più un server opzionale che disegna le pagine che questo telefono non può.**
+**Un browser con trasporto moderno per Windows Phone 8.1 — crittografia, TLS e
+DNS girano sul telefono, mentre le pagine che questo telefono non sa disegnare
+le disegna un server ospitato. Quel server è il motore predefinito, è a un
+interruttore di distanza dall'essere spento, e questa pagina dice quanto costa
+prima che tu lo usi.**
 
 [English](README.md) · [Italiano](README.it.md)
 
@@ -20,13 +23,13 @@ sistema, non un limite delle ambizioni di questo progetto.
 
 | Obiettivo | Realtà su Windows Phone 8.1 | Cosa fa BrowserForWP |
 | --- | --- | --- |
-| Includere il motore **Chromium** | Non esiste alcuna build di Chromium/Blink per WinRT-ARM 8.1. I container delle app non possono ospitare un renderer multi-processo in sandbox. | Fornisce un `IBrowserEngine` sostituibile. Su WP8.1 distribuisce `TridentEngine`; `WebView2Engine` (Chromium) e `GeckoViewEngine` (Firefox) si innestano su qualunque piattaforma li possieda. Dal Round 10 esiste una terza possibilità che non richiede alcun port: il **motore remoto opzionale** esegue Chromium su un server che configuri tu e manda l'immagine attraverso il canale TLS 1.3 dell'app. Vedi *Nessun backend per impostazione predefinita* nella tabella e la Legge 5 in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). |
+| Includere il motore **Chromium** | Non esiste alcuna build di Chromium/Blink per WinRT-ARM 8.1. I container delle app non possono ospitare un renderer multi-processo in sandbox. | Fornisce un `IBrowserEngine` sostituibile. Su WP8.1 distribuisce `TridentEngine`; `WebView2Engine` (Chromium) e `GeckoViewEngine` (Firefox) si innestano su qualunque piattaforma li possieda. Dal Round 10 esiste una terza possibilità che non richiede alcun port: il **motore ospitato** esegue Chromium su un server e manda l'immagine attraverso il canale TLS 1.3 dell'app. È il motore con cui questa build esce impostata, e dalle Impostazioni lo sostituisci con qualunque server tuo. Vedi *Renderer ospitato per impostazione predefinita* qui sotto e la Legge 5 in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). |
 | Includere il motore **Firefox / Gecko** | Mozilla ha cancellato Firefox per Windows Phone nel 2015. Nessun binario è mai stato distribuito. | Stessa astrazione sostituibile di cui sopra. |
 | **TLS 1.3** | Schannel su WP8.1 si ferma a **TLS 1.2** e il sistema non espone alcuna API per alzare il limite. | **Implementato dalle RFC, in codice gestito, sul dispositivo**: un client TLS 1.3 completo (`BrowserForWP.Net`) che gira su un `StreamSocket` grezzo, così il livello di rete dell'app parla TLS 1.3 già oggi. |
 | **HTTPS moderno** | La `WebView` di sistema negozia ciò che Schannel supporta. | `Tls13Client` + resolver DNS-over-HTTPS + pinning dei certificati per il livello di trasporto dell'app. Il pin non copre però il canale di rendering del motore remoto: `Tls13Client` accetta un host e nessuna tabella di pin. La lacuna è registrata in `docs/MAINTAINING.md`, non lasciata da scoprire. |
 | **Pagine web moderne** | IE11 non riesce a interpretare né a eseguire il JavaScript moderno. | Un bundle di compatibilità ES5 sul dispositivo (`BrowserForWP.Polyfill`) iniettato a `DOMContentLoaded` e di nuovo al completamento, più una diagnostica che spiega *perché* un sito ha fallito. Il bundle alza il livello minimo ma non può interpretare la sintassi ES6 né fornire `Proxy`/`Intl`/grid — vedi l'elenco qui sotto. |
 | **Un motore da zero** | Su questo sistema non si può costruire un motore *al posto di* Trident, e Trident non è riconfigurabile (vedi [`docs/MAINTAINING.md`](docs/MAINTAINING.md), sezione *IE-adaptation is closed*). | Una **pipeline di documenti** vive in `BrowserForWP.Core/Engine/Native`: recupera una pagina attraverso il trasporto TLS 1.3 dell'app — l'unico percorso di questo prodotto che può caricare qualcosa sopra TLS 1.2 — e analizza un **sottoinsieme dichiarato** di HTML e CSS producendo un albero di box, visibile in **Diagnostica → Analizza la pagina corrente**. **Non esegue JavaScript** e mai lo farà. Un *renderer* sul dispositivo per quell'albero è stato costruito nel Round 7 e **cancellato nel Round 10**: era una cosa più piccola di un browser, e mantenere due renderer per dimostrarlo era lo scambio sbagliato (Legge 5). |
-| **Nessun backend per impostazione predefinita** | — | Ogni componente — crittografia, TLS, DNS, polyfill, cronologia, localizzazione — gira sul telefono. Il motore remoto opzionale manda le pagine attraverso un server che configuri tu, e **quel server può leggere tutto ciò che leggi**. È disattivato finché non lo accendi, e la Legge 5 in `docs/ARCHITECTURE.md` dice perché. |
+| **Renderer ospitato per impostazione predefinita** | — | Ogni componente — crittografia, TLS, DNS, polyfill, cronologia, localizzazione — gira sul telefono. L'eccezione è il *rendering*, ed è l'eccezione predefinita: le pagine vanno a un server che le disegna con Chromium, e **chi gestisce quel server può leggere tutto quello che leggi tu, password comprese**. L'indirizzo esce già impostato sul server ospitato di questo progetto. Puoi puntarlo a un server tuo, oppure disattivarlo e tenere ogni pagina sul telefono: la Legge 5 in `docs/ARCHITECTURE.md` è il costo completo, e le Impostazioni lo dicono accanto all'interruttore. Un dispositivo non ancora registrato, o un server che non risponde, ripiegano sul motore sul dispositivo e lo scrivono nella barra di stato. |
 
 > **Sull'idea del proxy locale sul dispositivo:** i Windows AppContainer
 > bloccano per impostazione predefinita il traffico verso `127.0.0.1`, quindi un

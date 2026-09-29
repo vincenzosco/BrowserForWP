@@ -111,8 +111,22 @@ The remote engine does not lift the platform's ceiling. It moves the ceiling to
 somebody else's machine, and it changes what the browser IS:
 
 - The operator of the server can read every page, including passwords. This is
-  not a flaw; it is the architecture, and it is why the engine is off until a
-  person turns it on and configures a server.
+  not a flaw; it is the architecture. It is also why the disclosure is not a
+  sentence in a README but three things a person can act on: the switch in
+  Settings, the address field beside it, and a status line that names the engine
+  that drew the page. **This build ships with the hosted engine as its default**
+  -- `AppSettings.DefaultHostedUrl` is the project's own server -- so the question
+  is live from the first page rather than from whenever somebody finds a settings
+  screen.
+- A default is not a promise that the server exists, so the rule is that wanting
+  the hosted engine is not having it. `EngineChoice.Decide` asks
+  `RemoteServers.Ready` first: an address, a device token and the switch on. A
+  fresh install has the address and no token, because a token is issued per device
+  by the server and pasted in by hand, so its first page is drawn **on the phone**
+  with the reason on screen. If the server stops answering, the same rule hands the
+  page to the on-device engine and says so in the status line -- a browser that
+  renders nothing is not a browser, and a silent change of engine would be worse
+  than either.
 - The device holds no page. No script runs locally, so Find, Reading mode and
   night mode are Trident features and are disabled on this engine rather than
   pretending to work.
@@ -149,7 +163,7 @@ renderer.**
 | --- | --- |
 | Transport (the wire) | **Modern.** TLS 1.3, X25519, ChaCha20-Poly1305, DNS-over-HTTPS, all on-device. |
 | Compatibility (what pages can run) | **Improved.** An injected ES5 shim raises the floor for modern pages. |
-| Rendering (how it looks) | **Capped at IE11 locally.** A remote Chromium is not addressed by escaping anything, and it is not free: see Law 5. |
+| Rendering (how it looks) | **Capped at IE11 on the device.** The hosted engine draws with a real Chromium, and that is not addressed by escaping anything: it moves the page to a machine somebody runs, and it is not free. See Law 5. |
 
 The compatibility probe (`BrowserForWP.Core/Diagnostics`) exists so that the
 remaining gap is *reported*, not mysterious.

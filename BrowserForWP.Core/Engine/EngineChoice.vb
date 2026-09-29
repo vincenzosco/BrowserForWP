@@ -1,9 +1,16 @@
 ' BrowserForWP — which engine renders the next page.
 '
-' Two questions, one answer: what the user asked for, and what a measurement of
-' the page actually says. The rule lives here, in Core, because it is pure — no
-' XAML, no prose the user reads, no I/O — so tools/proto/engine-choice.mjs can
-' execute it off-device and tests/BrowserForWP.Core.Tests can compile it.
+' Three questions, one answer: what the user asked for, whether the hosted
+' renderer is usable at all, and what a measurement of the page actually says.
+' The rule lives here, in Core, because it is pure — no XAML, no prose the user
+' reads, no I/O — so tools/proto/engine-choice.mjs can execute it off-device and
+' tests/BrowserForWP.Core.Tests can compile it.
+'
+' The hosted engine is the default this build ships with, and the reason the
+' usable question comes first is that a default is not a promise that the server
+' exists: an install that has not been registered against one renders on the
+' device and says so, rather than sending a page nowhere or showing nothing at
+' all. See ARCHITECTURE.md Law 5.
 '
 ' The row of the table that matters most is the one about an ABSENT measurement.
 ' ProbeReport.CouldRun = False means nothing was measured, and this project has
@@ -57,17 +64,32 @@ Namespace Engine
         End Function
 
         ''' <summary>
-        ''' The engine to use. An explicit setting always wins over the probe: a
-        ''' user who chose the remote engine gets it even where Trident would have
-        ''' coped, and a user who chose Trident keeps it even where it will
-        ''' struggle. Only Auto consults the measurement.
+        ''' The engine to use. The HOSTED engine is what this build is set to, and
+        ''' that is the first thing this function has to be careful about: wanting it
+        ''' is not the same as being able to use it. `hostedReady` says whether the
+        ''' hosted renderer has an address, a device token and its switch on -- what
+        ''' RemoteServers.Ready answers -- and it is consulted BEFORE the choice is
+        ''' returned, so an install that has not been registered against a server
+        ''' renders on the device instead of sending pages nowhere.
+        '''
+        ''' An explicit Trident choice still wins over everything: a person who asked
+        ''' for the system engine keeps it. An explicit Auto consults the
+        ''' measurement, and the measurement can only move a page onto the hosted
+        ''' engine when that engine is usable at all.
         ''' </summary>
-        Public Shared Function Decide(setting As String, probeMeasured As Boolean, missingFeatureCount As Integer) As String
+        Public Shared Function Decide(setting As String, hostedReady As Boolean,
+                                      probeMeasured As Boolean, missingFeatureCount As Integer) As String
             Dim wanted As String = Normalize(setting)
-            If wanted = Remote Then Return Remote
             If wanted = Trident Then Return Trident
+
+            If wanted = Remote Then
+                If hostedReady Then Return Remote
+                Return Trident
+            End If
+
             If Not probeMeasured Then Return Trident
-            If missingFeatureCount >= AutomaticFallbackThreshold Then Return Remote
+            If missingFeatureCount < AutomaticFallbackThreshold Then Return Trident
+            If hostedReady Then Return Remote
             Return Trident
         End Function
 
@@ -75,14 +97,26 @@ Namespace Engine
         ''' Why Decide returned what it did, as a resource key. Never a sentence:
         ''' Core has no business holding user-facing prose, and the device has to
         ''' say this in two languages. The view layer resolves it through Localizer.
+        '''
+        ''' "Wanted but not usable" is one key, not two: whether the address is
+        ''' missing, the token is missing or the switch is off, the person reading
+        ''' the status line has the same next step, which is to finish configuring
+        ''' the server. The settings screen is where the difference is spelled out.
         ''' </summary>
-        Public Shared Function Explain(setting As String, probeMeasured As Boolean, missingFeatureCount As Integer) As String
+        Public Shared Function Explain(setting As String, hostedReady As Boolean,
+                                       probeMeasured As Boolean, missingFeatureCount As Integer) As String
             Dim wanted As String = Normalize(setting)
-            If wanted = Remote Then Return "EngineReasonSettingRemote"
             If wanted = Trident Then Return "EngineReasonSetting"
+
+            If wanted = Remote Then
+                If hostedReady Then Return "EngineReasonSettingRemote"
+                Return "EngineReasonRemoteNotConfigured"
+            End If
+
             If Not probeMeasured Then Return "EngineReasonAutoNoMeasurement"
-            If missingFeatureCount >= AutomaticFallbackThreshold Then Return "EngineReasonAutoTooManyMissingFeatures"
-            Return "EngineReasonAutoFits"
+            If missingFeatureCount < AutomaticFallbackThreshold Then Return "EngineReasonAutoFits"
+            If hostedReady Then Return "EngineReasonAutoTooManyMissingFeatures"
+            Return "EngineReasonRemoteNotConfigured"
         End Function
 
     End Class

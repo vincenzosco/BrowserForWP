@@ -30,6 +30,7 @@ function readIfPresent(path) {
 }
 
 const SOURCE = 'BrowserForWP.Core/Engine/EngineChoice.vb';
+const SOURCE_ENGINE = 'BrowserForWP/Engine/RemoteEngine.vb';
 
 // ── The transliterated rule ────────────────────────────────────────────────
 const Trident = 'trident';
@@ -42,45 +43,71 @@ function Normalize(setting) {
   return Auto;
 }
 
-function Decide(setting, probeMeasured, missingFeatureCount) {
+function Decide(setting, hostedReady, probeMeasured, missingFeatureCount) {
   const choice = Normalize(setting);
-  if (choice === Remote) return Remote;
   if (choice === Trident) return Trident;
+  if (choice === Remote) return hostedReady ? Remote : Trident;
   if (!probeMeasured) return Trident;
-  return missingFeatureCount >= Threshold ? Remote : Trident;
+  if (missingFeatureCount < Threshold) return Trident;
+  return hostedReady ? Remote : Trident;
 }
 
-function Explain(setting, probeMeasured, missingFeatureCount) {
+function Explain(setting, hostedReady, probeMeasured, missingFeatureCount) {
   const choice = Normalize(setting);
-  if (choice === Remote) return 'EngineReasonSettingRemote';
   if (choice === Trident) return 'EngineReasonSetting';
+  if (choice === Remote) {
+    return hostedReady ? 'EngineReasonSettingRemote' : 'EngineReasonRemoteNotConfigured';
+  }
   if (!probeMeasured) return 'EngineReasonAutoNoMeasurement';
-  return missingFeatureCount >= Threshold
+  if (missingFeatureCount < Threshold) return 'EngineReasonAutoFits';
+  return hostedReady
     ? 'EngineReasonAutoTooManyMissingFeatures'
-    : 'EngineReasonAutoFits';
+    : 'EngineReasonRemoteNotConfigured';
 }
 
 // ── The decision table ─────────────────────────────────────────────────────
 check('an explicit remote choice wins over a healthy probe',
-  Decide(Remote, true, 0) === Remote);
+  Decide(Remote, true, true, 0) === Remote);
 check('an explicit remote choice is honoured with no measurement at all',
-  Decide(Remote, false, 0) === Remote);
+  Decide(Remote, true, false, 0) === Remote);
 check('an explicit trident choice wins over a broken probe',
-  Decide(Trident, true, 99) === Trident);
+  Decide(Trident, true, true, 99) === Trident);
 check('an explicit trident choice is honoured with no measurement at all',
-  Decide(Trident, false, 0) === Trident);
+  Decide(Trident, true, false, 0) === Trident);
 check('auto with NO measurement stays on Trident',
-  Decide(Auto, false, 0) === Trident);
+  Decide(Auto, true, false, 0) === Trident);
 check('auto with no measurement and a huge count still stays on Trident',
-  Decide(Auto, false, 99) === Trident);
+  Decide(Auto, true, false, 99) === Trident);
 check('auto on a page the probe could run stays on Trident',
-  Decide(Auto, true, 0) === Trident);
+  Decide(Auto, true, true, 0) === Trident);
 check('auto one short of the threshold stays on Trident',
-  Decide(Auto, true, 7) === Trident);
+  Decide(Auto, true, true, 7) === Trident);
 check('auto at the threshold switches to the remote engine',
-  Decide(Auto, true, 8) === Remote);
+  Decide(Auto, true, true, 8) === Remote);
 check('auto past the threshold stays switched',
-  Decide(Auto, true, 99) === Remote);
+  Decide(Auto, true, true, 99) === Remote);
+
+// The rule this build added when the hosted engine became the default one. A
+// default is not a promise that a server exists: an install that has not been
+// registered has an address and no token, and "draw the page on a machine we
+// cannot use" is not one of the available answers. The three rows below are the
+// whole point -- wanting the hosted engine is not having it, and the fallback is
+// to the engine that always exists.
+check('the default engine is not chosen while the server is unusable',
+  Decide(Remote, false, true, 0) === Trident);
+check('and it is not chosen with a healthy probe either',
+  Decide(Remote, false, true, 99) === Trident);
+check('it is chosen as soon as the server is usable',
+  Decide(Remote, true, false, 0) === Remote);
+check('the reason names the missing configuration, not the page',
+  Explain(Remote, false, true, 0) === 'EngineReasonRemoteNotConfigured');
+check('an automatic switch to an unusable server does not happen',
+  Decide(Auto, false, true, 99) === Trident
+  && Explain(Auto, false, true, 99) === 'EngineReasonRemoteNotConfigured');
+check('an automatic switch to a usable server still happens',
+  Decide(Auto, true, true, 99) === Remote);
+check('switching a server OFF takes the hosted engine away even when it is addressed',
+  Decide(Remote, false, false, 0) === Trident);
 
 // The keyword this app used to store for the renderer it no longer has. An
 // upgrade that reads it must become indistinguishable from Auto -- and the
@@ -91,27 +118,41 @@ check('auto past the threshold stays switched',
 check('the keyword an older version stored normalises to Auto, not to an engine',
   Normalize('native') === Auto);
 check('a stale keyword cannot move a page onto the remote engine without evidence',
-  Decide('native', false, 0) === Trident && Decide('native', false, 99) === Trident,
+  Decide('native', true, false, 0) === Trident && Decide('native', true, false, 99) === Trident,
   'with no measurement, nothing may switch');
 check('an empty setting is auto, not an error',
-  Decide('', true, 8) === Remote && Decide('', true, 0) === Trident);
+  Decide('', true, true, 8) === Remote && Decide('', true, true, 0) === Trident);
 check('an unrecognised setting is auto, not an error',
-  Decide('ie', true, 8) === Remote);
+  Decide('ie', true, true, 8) === Remote);
 check('the threshold is 8',
-  Decide(Auto, true, 7) === Trident && Decide(Auto, true, 8) === Remote);
+  Decide(Auto, true, true, 7) === Trident && Decide(Auto, true, true, 8) === Remote);
 
 // ── The reasons are keys, one per reachable decision ───────────────────────
 const reasons = [
-  Explain(Remote, true, 0),
-  Explain(Trident, true, 0),
-  Explain(Auto, true, 0),
-  Explain(Auto, true, 9),
-  Explain(Auto, false, 0),
+  Explain(Remote, true, true, 0),
+  Explain(Trident, true, true, 0),
+  Explain(Auto, true, true, 0),
+  Explain(Auto, true, true, 9),
+  Explain(Auto, true, false, 0),
 ];
 check('every reason is a resource key, not a sentence',
   reasons.every((r) => /^EngineReason[A-Za-z]+$/.test(r)), reasons.join(', '));
 check('the five reasons are five distinct keys',
   new Set(reasons).size === 5, reasons.join(', '));
+
+// The sixth key, reachable only now that the hosted engine is the default: it is
+// the reason a person sees when the engine they were promised is not set up, and
+// it is also the key the SHELL reads to decide whether to hand the page to the
+// device. Two files depend on that exact spelling.
+check('the unusable-hosted reason is its own key',
+  Explain(Remote, false, false, 0) === 'EngineReasonRemoteNotConfigured'
+  && !reasons.includes('EngineReasonRemoteNotConfigured'));
+check('the shell and the rule agree on which keys mean "hand it to the device"',
+  /Private Shared Function IsHostedEngineUnusable[\s\S]{0,600}EngineReasonRemoteNotConfigured[\s\S]{0,600}EngineReasonRemoteUnreachable/.test(
+    readIfPresent('BrowserForWP/MainPage.xaml.vb')));
+check('a fallback that reloaded the session tab instead of the asked-for page is refused',
+  /result\.Url = If\(pageUrl, String\.Empty\)/.test(readIfPresent(SOURCE_ENGINE)),
+  `${SOURCE_ENGINE} must carry the requested page on a failure, or the fallback loads the previous one`);
 
 // ── The source contract ────────────────────────────────────────────────────
 const source = readIfPresent(SOURCE);
@@ -123,6 +164,25 @@ check('it declares the three choices as constants',
 check('it declares the threshold as a named constant, not a magic number',
   /AutomaticFallbackThreshold As Integer = 8/.test(source));
 check('it is uninstantiable', /Private Sub New\(\)/.test(source));
+// A transliteration drifts silently, and this file is one: the checks above
+// execute the functions defined HERE, so a VB edit that deleted the readiness
+// branch would leave every one of them green. That is not a hypothetical -- the
+// first draft of this round's referee passed with the branch removed. These four
+// source checks are what make the rule above a statement about the VB rather than
+// about this file, and the mutation that removed the branch is refused by them.
+check('Decide consults readiness on the explicit path',
+  /If wanted = Remote Then\s*\n\s*If hostedReady Then Return Remote\s*\n\s*Return Trident\s*\n\s*End If/.test(source),
+  'wanting the hosted engine is not having it');
+check('Decide consults readiness on the automatic path too',
+  (source.match(/If hostedReady Then Return Remote/g) ?? []).length === 2,
+  'both paths that can return the hosted engine must ask first');
+check('Explain reports the missing configuration rather than a page problem',
+  (source.match(/Return "EngineReasonRemoteNotConfigured"/g) ?? []).length === 2);
+check('Explain never reports a page problem for an unusable server',
+  !/If wanted = Remote Then\s*\n\s*Return "EngineReasonSettingRemote"/.test(source));
+check('Decide takes the hosted-renderer answer before the measurement',
+  /Function Decide\(setting As String, hostedReady As Boolean,\s*\n?\s*probeMeasured As Boolean/.test(source),
+  'the hosted engine is the default, so "is it usable" is the first question');
 
 // A space inside a string literal here is how an English sentence gets into a
 // library. Comments are skipped (they are allowed to name things in English),

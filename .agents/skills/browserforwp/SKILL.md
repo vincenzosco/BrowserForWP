@@ -246,7 +246,7 @@ verified if you skipped its command.
 | `PinStore.vb` / pin comparison | `node tools/proto/pinstore.mjs` | `0 failure(s)` |
 | Test vectors themselves | `node tools/gen-vectors.mjs` | every line prefixed `✓`, exit code 0 |
 | The vector emitter itself | `node tools/gen-vectors.mjs` | `emitted VB braces balanced`, else it refuses to write, exit code 1 |
-| `BrowserForWP.Core/` logic | `node tools/proto/core-logic.mjs` | `core-logic checks, 0 failure(s)` (66 assertions) |
+| `BrowserForWP.Core/` logic | `node tools/proto/core-logic.mjs` | `core-logic checks, 0 failure(s)` (72 assertions) |
 | `Engine/Native/IDocumentFetcher.vb` / fetch rules | `node tools/proto/fetch-rules.mjs` | `25/25 checks passed` |
 | `Engine/Native/Html*.vb` | `node tools/proto/htmlparse.mjs` | `30/30 checks passed` |
 | `Engine/Native/CssParser.vb` / `SelectorMatcher.vb` | `node tools/proto/csscascade.mjs` | `47/47 checks passed` |
@@ -256,8 +256,9 @@ verified if you skipped its command.
 | Lite defaults / caps / resources | `node tools/proto/lightweight.mjs` | `0 failure(s)` |
 | Shim delivery / redirect rules | `node tools/proto/modern-sites.mjs` | `0 failure(s)` |
 | Picker/tab re-entrancy, sln registration | `node tools/proto/shell-guards.mjs` | `0 failure(s)` |
-| `RemoteServers.vb`, the settings fields it reads, or anything that chooses WHERE to render | `node tools/proto/remote-servers.mjs` | `19/19 checks passed`. The old `textmeasure.mjs` / `boxlayout.mjs` rows were deleted with the on-device renderer |
-| `EngineChoice.vb`, or anything that selects an engine or falls back automatically | `node tools/proto/engine-choice.mjs` | `23/23 checks passed` |
+| `RemoteServers.vb`, the settings fields it reads, `Ready`, or anything that chooses WHERE to render | `node tools/proto/remote-servers.mjs` | `24/24 checks passed`. The old `textmeasure.mjs` / `boxlayout.mjs` rows were deleted with the on-device renderer |
+| `EngineChoice.vb`, or anything that selects an engine, falls back automatically, or decides whether the hosted engine is usable | `node tools/proto/engine-choice.mjs` | `34/34 checks passed`. It is a transliteration, so it also carries source checks: a mutation that deletes the `hostedReady` branch from the VB is NOT visible to the transliterated rule and IS refused by those |
+| The engine that actually drew a page, and what the status line says | `BrowserForWP/MainPage.xaml.vb` (`IsHostedEngineUnusable`) + the run | Mutating `Decide` to ignore readiness, or dropping the requested url from a failure, must turn `engine-choice.mjs` red. Both were done |
 | Any claim about the remote engine's wire format, header, frame splitter or sealed frames | `node tools/proto/remote-protocol.mjs` | `91/91 checks passed`, byte-for-byte against the vectors the SERVER's own code emitted |
 | The remote input path: the hidden keyboard field, the write gate, a rotation, the keys bar | `node tools/proto/remote-input.mjs --probe` | `7/7 remote-input checks passed` AND `Every planted defect was refused`. The `--probe` half is not optional: it plants each defect the checks exist for, and a mutation that does not fail its check means that check cannot see what it is named after |
 | `CompatibilityProbe.vb` / any probe verdict | `node tools/proto/probe-verdict.mjs` | `9/9 checks passed` |

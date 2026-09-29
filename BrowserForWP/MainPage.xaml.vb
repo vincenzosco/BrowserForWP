@@ -928,7 +928,8 @@ Public NotInheritable Class MainPage
             ' would fight over the same document. The reader stays reachable from the
             ' Reading button.
             If _appSettings.EngineSetting = EngineChoice.Auto AndAlso
-               EngineChoice.Decide(EngineChoice.Auto, True, compatReport.MissingFeatures.Count) = EngineChoice.Remote Then
+               EngineChoice.Decide(EngineChoice.Auto, HostedEngineReady(), True,
+                                   compatReport.MissingFeatures.Count) = EngineChoice.Remote Then
                 UseEngine(EngineChoice.Remote)
                 _engine.Navigate(_session.ActiveTab.Url)
                 Return
@@ -1146,12 +1147,29 @@ Public NotInheritable Class MainPage
 
     ''' <summary>
     ''' Resolve the setting to an engine and host it. Called with no measurement in
-    ''' hand, which is exactly why an automatic choice lands on the system engine here:
-    ''' the measurement, if there is one, arrives later, and that is what may move it.
+    ''' hand, which is why an automatic choice lands on the system engine here: the
+    ''' measurement, if there is one, arrives later, and that is what may move it.
+    '''
+    ''' The hosted engine's readiness is NOT deferred that way, because it is not a
+    ''' measurement -- it is whether the server has an address, a token and its
+    ''' switch on, and this shell can answer that before it draws anything.
     ''' </summary>
     Private Sub ApplyEngineChoice()
-        UseEngine(EngineChoice.Decide(_appSettings.EngineSetting, False, 0))
+        UseEngine(EngineChoice.Decide(_appSettings.EngineSetting, HostedEngineReady(), False, 0))
     End Sub
+
+    ''' <summary>
+    ''' Whether the hosted renderer is usable right now: the question
+    ''' EngineChoice.Decide consults before handing it a page, answered by
+    ''' RemoteServers.Ready from the snapshot Core builds. On a fresh install the
+    ''' address is there -- it ships pointed at the hosted server -- and the device
+    ''' token is not, because a token is issued per device and pasted by hand, so
+    ''' this answers False until somebody registers the phone. That is the intended
+    ''' first-run state: the device renders, and the settings screen says why.
+    ''' </summary>
+    Private Function HostedEngineReady() As Boolean
+        Return RemoteServers.Ready(_appSettings.RemoteSettings())
+    End Function
 
     ''' <summary>
     ''' Build the chosen engine if it does not exist, attach its events once, put it in
@@ -1201,7 +1219,7 @@ Public NotInheritable Class MainPage
         RemoteKeysButton.IsEnabled = remoteEngine
         If Not remoteEngine Then RemoteKeysBar.Visibility = Visibility.Collapsed
 
-        EngineStatusText.Text = Localizer.Get(EngineChoice.Explain(_appSettings.EngineSetting, False, 0))
+        EngineStatusText.Text = Localizer.Get(EngineChoice.Explain(_appSettings.EngineSetting, HostedEngineReady(), False, 0))
     End Sub
 
     ''' <summary>
@@ -1312,6 +1330,31 @@ Public NotInheritable Class MainPage
         HideError()
 
         If Not e.IsSuccess Then
+            ' Two of the failure reasons do not describe a page: they describe the
+            ' DEFAULT engine not being usable as an engine at all -- no server
+            ' configured, or none answering. Handing those to the error strip would
+            ' leave a person with a blank screen where the browser should be, so the
+            ' page goes to the on-device engine instead, which is the answer
+            ' EngineChoice.Decide would have given had it known.
+            '
+            ' Falling back QUIETLY is the other half of the mistake: the status line
+            ' names the engine that drew the page and the reason the other one did
+            ' not, because "this is not the engine you chose" is exactly the thing a
+            ' person must not have to guess. The remaining reasons are real page
+            ' errors and keep the behavior below.
+            If IsHostedEngineUnusable(e.StatusKey) Then
+                Dim reason As String = Localizer.Get(e.StatusKey)
+                Dim wantedUrl As String = e.Url
+                If String.IsNullOrEmpty(wantedUrl) Then
+                    wantedUrl = _appSettings.Homepage
+                End If
+                UseEngine(EngineChoice.Trident)
+                StatusText.Text = Localizer.Get("EngineFallbackOnDevice") & "  " & reason
+                _engine.Navigate(wantedUrl)
+                RefreshTabsList()
+                Return
+            End If
+
             ' The token is engine-level detail shown beside localized copy, the same
             ' shape the WebView path already uses for WebErrorStatus. It is a wart
             ' this repository records rather than one introduced here.
@@ -1337,6 +1380,18 @@ Public NotInheritable Class MainPage
         RefreshHistoryList()
         UpdateSecurityGlyph()
     End Sub
+
+    ''' <summary>
+    ''' The failure reasons that mean "the hosted engine could not be used", as
+    ''' opposed to "the page failed". Named in one place so the fallback above and
+    ''' any future reader agree on which reasons cause a change of engine; the two
+    ''' keys are the ones EngineChoice.Explain returns when it hands a page to the
+    ''' on-device engine, and the referee tools/proto/engine-choice.mjs pins them.
+    ''' </summary>
+    Private Shared Function IsHostedEngineUnusable(statusKey As String) As Boolean
+        Return statusKey = "EngineReasonRemoteNotConfigured" OrElse
+               statusKey = "EngineReasonRemoteUnreachable"
+    End Function
 
     ''' <summary>
     ''' Ask the hosted engine how it is configured. This is the instrument behind

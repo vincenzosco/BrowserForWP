@@ -185,23 +185,25 @@ Namespace Engine
                 ' navigation, rather than where the engine was built.
                 If Not _settings.RemoteEnabled Then
                     RaiseEvent Navigated(Me, Failed("EngineReasonRemoteNotConfigured",
-                                                    "the remote engine is switched off"))
+                                                    "the hosted engine is switched off", url))
                     Return
                 End If
 
                 Dim candidates As List(Of String) = RemoteServers.Order(CurrentRemoteSettings())
                 If candidates.Count = 0 Then
-                    ' Nothing is configured, and nothing was sent anywhere. This is
-                    ' the state the shipped build is in, because it bakes in no
-                    ' server at all.
+                    ' Nothing is configured, and nothing was sent anywhere. On a
+                    ' fresh install the address IS set -- it is AppSettings'
+                    ' DefaultHostedUrl -- so what lands here is an install whose
+                    ' server field was cleared, or whose settings predate the hosted
+                    ' default.
                     RaiseEvent Navigated(Me, Failed("EngineReasonRemoteNotConfigured",
-                                                    "no render server is configured"))
+                                                    "no render server is configured", url))
                     Return
                 End If
 
                 Await ConnectAndNavigateAsync(url, candidates)
             Catch ex As Exception
-                RaiseEvent Navigated(Me, Failed("EngineReasonRemoteUnreachable", ex.Message))
+                RaiseEvent Navigated(Me, Failed("EngineReasonRemoteUnreachable", ex.Message, url))
             End Try
         End Sub
 
@@ -263,7 +265,7 @@ Namespace Engine
                 Return
             Next
 
-            RaiseEvent Navigated(Me, Failed("EngineReasonRemoteUnreachable", lastFailure))
+            RaiseEvent Navigated(Me, Failed("EngineReasonRemoteUnreachable", lastFailure, url))
         End Function
 
         Public Sub GoBack() Implements IBrowserEngine.GoBack
@@ -317,7 +319,7 @@ Namespace Engine
                     Case RemoteMessageType.LoadState
                         Dim state As RemoteLoadState = RemoteMessages.DecodeLoadState(payload)
                         If state.State = RemoteLoadState.Failed Then
-                            RaiseEvent Navigated(Me, Failed("ErrorNavigationFailed", state.Detail))
+                            RaiseEvent Navigated(Me, Failed("ErrorNavigationFailed", state.Detail, _currentUrl))
                         End If
                     Case RemoteMessageType.Audio
                         Dim sound As RemoteAudio = RemoteMessages.DecodeAudio(payload)
@@ -337,7 +339,7 @@ Namespace Engine
                 ' A message this client cannot act on must not take the read loop
                 ' down with it, because the loop's own error reporting is what tells
                 ' the person anything at all.
-                RaiseEvent Navigated(Me, Failed("ErrorPageFailed", ex.Message))
+                RaiseEvent Navigated(Me, Failed("ErrorPageFailed", ex.Message, _currentUrl))
             End Try
         End Function
 
@@ -359,7 +361,7 @@ Namespace Engine
         End Function
 
         Private Sub OnChannelClosed(reason As String)
-            RaiseEvent Navigated(Me, Failed("EngineReasonRemoteUnreachable", reason))
+            RaiseEvent Navigated(Me, Failed("EngineReasonRemoteUnreachable", reason, _currentUrl))
         End Sub
 
         ' ── The device's fingers, as messages ─────────────────────────────
@@ -416,7 +418,7 @@ Namespace Engine
             Try
                 Await _channel.SendAsync(messageType, payload)
             Catch ex As Exception
-                RaiseEvent Navigated(Me, Failed("EngineReasonRemoteUnreachable", ex.Message))
+                RaiseEvent Navigated(Me, Failed("EngineReasonRemoteUnreachable", ex.Message, _currentUrl))
             End Try
         End Sub
 
@@ -464,19 +466,15 @@ Namespace Engine
         End Function
 
         ''' <summary>
-        ''' What the user configured, as plain data. Built on every use rather than
-        ''' cached: the settings screen can change the server between two
-        ''' navigations, and an engine that kept the first answer would send the
-        ''' next page to the server the person just stopped using.
+        ''' What the user configured, as plain data. One definition for this and for
+        ''' the shell, which asks the same snapshot whether the hosted engine is
+        ''' usable at all -- and built on every use rather than cached, because the
+        ''' settings screen can change the server between two navigations: an engine
+        ''' that kept the first answer would send the next page to the server the
+        ''' person just stopped using.
         ''' </summary>
         Private Function CurrentRemoteSettings() As RemoteServerSettings
-            Dim snapshot As New RemoteServerSettings()
-            snapshot.PrimaryUrl = _settings.RemotePrimaryUrl
-            snapshot.PrimaryToken = _settings.RemotePrimaryToken
-            snapshot.SecondaryUrl = _settings.RemoteSecondaryUrl
-            snapshot.SecondaryToken = _settings.RemoteSecondaryToken
-            snapshot.RemoteEnabled = _settings.RemoteEnabled
-            Return snapshot
+            Return _settings.RemoteSettings()
         End Function
 
         Private Sub ApplyViewport()
@@ -561,10 +559,19 @@ Namespace Engine
             End Try
         End Function
 
-        Private Shared Function Failed(statusKey As String, detail As String) As RemoteNavigationResult
+        ''' <summary>
+        ''' A failure carries the page that was asked for, not an empty string.
+        '''
+        ''' The shell needs it: when the hosted engine cannot be used at all, the page
+        ''' is handed to the on-device engine, and that engine has to be pointed at
+        ''' the page the person asked for. `_session.ActiveTab.Url` is the PREVIOUS
+        ''' page, so a fallback that read it would quietly load the wrong one -- and
+        ''' look like it worked.
+        ''' </summary>
+        Private Shared Function Failed(statusKey As String, detail As String, pageUrl As String) As RemoteNavigationResult
             Dim result As New RemoteNavigationResult()
             result.IsSuccess = False
-            result.Url = String.Empty
+            result.Url = If(pageUrl, String.Empty)
             result.StatusKey = statusKey
             result.Detail = detail
             Return result

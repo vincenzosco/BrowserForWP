@@ -61,17 +61,23 @@ Namespace CoreTests
             ran += 1
 
             ' The engine-choice rule. Refused exhaustively off-device by
-            ' tools/proto/engine-choice.mjs; these four are the rows that also have
-            ' to hold in the compiled half, and the third is the one that matters:
-            ' an absent measurement is never grounds for switching engines.
-            Check(EngineChoice.Decide(EngineChoice.Remote, False, 0) = EngineChoice.Remote,
-                  "engine choice: explicit remote wins with no measurement")
-            Check(EngineChoice.Decide(EngineChoice.Trident, True, 99) = EngineChoice.Trident,
+            ' tools/proto/engine-choice.mjs; these five are the rows that also have
+            ' to hold in the compiled half. Two of them matter most: an absent
+            ' measurement is never grounds for switching engines, and the hosted
+            ' engine -- which is the default this build ships -- is NOT chosen until
+            ' it is usable, so a default install renders on the device.
+            Check(EngineChoice.Decide(EngineChoice.Remote, True, False, 0) = EngineChoice.Remote,
+                  "engine choice: a ready hosted server is used when chosen")
+            Check(EngineChoice.Decide(EngineChoice.Remote, False, False, 0) = EngineChoice.Trident,
+                  "engine choice: the default engine is not used before it is configured")
+            Check(EngineChoice.Decide(EngineChoice.Trident, True, True, 99) = EngineChoice.Trident,
                   "engine choice: explicit trident wins over a broken probe")
-            Check(EngineChoice.Decide(EngineChoice.Auto, False, 99) = EngineChoice.Trident,
+            Check(EngineChoice.Decide(EngineChoice.Auto, True, False, 99) = EngineChoice.Trident,
                   "engine choice: auto never switches on an absent measurement")
-            Check(EngineChoice.Decide(EngineChoice.Auto, True, EngineChoice.AutomaticFallbackThreshold) = EngineChoice.Remote,
+            Check(EngineChoice.Decide(EngineChoice.Auto, True, True, EngineChoice.AutomaticFallbackThreshold) = EngineChoice.Remote,
                   "engine choice: auto switches at the threshold")
+            Check(EngineChoice.Explain(EngineChoice.Remote, False, True, 0) = "EngineReasonRemoteNotConfigured",
+                  "engine choice: an unusable hosted server says so, as a key")
             ran += 1
 
             ' The three engine shapes. The third is the defect this property had:
@@ -151,6 +157,19 @@ Namespace CoreTests
             ' One field instead of two: the same device, registered on both servers.
             Check(RemoteServers.TokenFor(serverSettings, "https://backup.example.com") = "primary-token",
                   "server token: the secondary falls back to the primary's")
+
+            ' "Can the hosted engine be used at all", which is the question
+            ' EngineChoice.Decide asks before it hands over a page. An address with no
+            ' token is not a configured server: the server would refuse the handshake
+            ' one round trip later, and the phone would then report the wrong thing.
+            Check(RemoteServers.Ready(serverSettings), "server ready: address, token and switch")
+            Dim noToken As New RemoteServerSettings()
+            noToken.PrimaryUrl = "https://render.example.com"
+            Check(Not RemoteServers.Ready(noToken), "server ready: an address with no token is not ready")
+            noToken.PrimaryToken = "registered"
+            Check(RemoteServers.Ready(noToken), "server ready: the token is what completes it")
+            noToken.RemoteEnabled = False
+            Check(Not RemoteServers.Ready(noToken), "server ready: the switch off is not ready")
             ran += 1
 
             Return ran

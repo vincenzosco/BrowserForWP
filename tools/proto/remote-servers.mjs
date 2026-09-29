@@ -6,8 +6,8 @@
 // option — because "add your own" means replacing the secondary, and a list
 // nobody can see the end of is a settings screen nobody finishes.
 //
-// The thirteen behavioural checks below are a transliteration of the VB's
-// Normalize/Order; the four source checks assert the parts of the file a
+// The behavioural checks below are a transliteration of the VB's
+// Normalize/Order/TokenFor/Ready; the source checks assert the parts of the file a
 // behaviour cannot show — that it holds no user-facing prose, that the two roles
 // are constants rather than literals scattered through the logic, and that it is
 // a rule and not a thing.
@@ -55,6 +55,29 @@ function Order(settings) {
   return out;
 }
 
+// The token for a url, with the secondary falling back to the primary's: that
+// fallback is what makes "the same device, registered on both servers" one field
+// instead of two. Mirrors RemoteServers.TokenFor.
+function TokenFor(settings, url) {
+  if (!settings) return '';
+  const normalized = Normalize(url);
+  if (!normalized) return '';
+  if (normalized === Normalize(settings.primaryUrl)) return String(settings.primaryToken ?? '');
+  const secondary = String(settings.secondaryToken ?? '');
+  return secondary.length > 0 ? secondary : String(settings.primaryToken ?? '');
+}
+
+// Ready is the question EngineChoice.Decide asks before it hands a page over, and
+// it exists because "an address is set" and "a server can be used" are different
+// statements. Without it, a fresh install -- which ships with the hosted address
+// and no device token, because a token is issued per device -- would dial, be
+// refused at the handshake, and be told the servers were unreachable.
+function Ready(settings) {
+  if (!settings) return false;
+  if (settings.remoteEnabled !== true) return false;
+  return Order(settings).some((url) => TokenFor(settings, url).length > 0);
+}
+
 check('a url with no scheme becomes https',
   Normalize('render.example.com') === 'https://render.example.com');
 check('a trailing slash is removed',
@@ -84,6 +107,25 @@ check('two spellings of one server are one entry, not two attempts',
   Order({ primaryUrl: 'https://a/', secondaryUrl: 'https://a' }).length === 1);
 check('with no server configured there is nothing to try',
   Order({ primaryUrl: '', secondaryUrl: '' }).length === 0);
+
+// ── Ready: the address is not the credential ──────────────────────────────
+const hosted = {
+  primaryUrl: 'https://render.example.com',
+  primaryToken: 'device-token',
+  secondaryUrl: '',
+  secondaryToken: '',
+  remoteEnabled: true,
+};
+check('a server with an address, a token and the switch on is ready',
+  Ready(hosted) === true);
+check('the address alone is not ready: the token is what completes it',
+  Ready({ ...hosted, primaryToken: '' }) === false);
+check('the switch off is not ready, however complete the address is',
+  Ready({ ...hosted, remoteEnabled: false }) === false);
+check('nothing configured is not ready',
+  Ready({ primaryUrl: '', primaryToken: '', secondaryUrl: '', secondaryToken: '', remoteEnabled: true }) === false);
+check('a ready secondary is enough when the primary has no token',
+  Ready({ primaryUrl: 'https://a', primaryToken: '', secondaryUrl: 'https://b', secondaryToken: 't', remoteEnabled: true }) === true);
 
 check(`${SOURCE} exists`, source.length > 0);
 check('it declares the two roles as constants, not as literals in the logic',

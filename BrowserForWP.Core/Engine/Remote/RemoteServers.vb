@@ -23,7 +23,7 @@ Namespace Remote
             PrimaryToken = String.Empty
             SecondaryUrl = String.Empty
             SecondaryToken = String.Empty
-            RemoteEnabled = False
+            RemoteEnabled = True
         End Sub
 
         Public Property PrimaryUrl As String
@@ -32,8 +32,10 @@ Namespace Remote
         Public Property SecondaryToken As String
 
         ''' <summary>
-        ''' Off until a person turns it on, because turning it on sends every page
-        ''' they read through somebody else's machine.
+        ''' Switched ON in the default settings, because the hosted engine is this
+        ''' build's default engine -- which is also why this is the field the
+        ''' Settings screen leads with, next to the note that the server's operator
+        ''' can read every page sent to it. Turning it off is one toggle.
         ''' </summary>
         Public Property RemoteEnabled As Boolean
 
@@ -185,6 +187,31 @@ Namespace Remote
             If first.Length > 0 Then result.Add(first)
             If second.Length > 0 AndAlso second <> first Then result.Add(second)
             Return result
+        End Function
+
+        ''' <summary>
+        ''' True when the hosted engine can be used at all: the switch is on AND at
+        ''' least one server has both an address and a token.
+        '''
+        ''' A candidate with no token is not a configured server. The connection
+        ''' would be refused by the server at the handshake for a reason the phone
+        ''' cannot see, one round trip after everything looked fine -- and "the
+        ''' servers are unreachable" is then the wrong thing to tell somebody whose
+        ''' actual next step is to register this device. This is the answer
+        ''' EngineChoice.Decide consults before it hands a page to the hosted engine.
+        '''
+        ''' The SWITCH is read both here and in RemoteEngine, deliberately: the engine
+        ''' reads it on every navigation, because that is where the disclosure is
+        ''' honoured, and this reads it so that a switched-off server is not even a
+        ''' candidate.
+        ''' </summary>
+        Public Shared Function Ready(settings As RemoteServerSettings) As Boolean
+            If settings Is Nothing Then Return False
+            If Not settings.RemoteEnabled Then Return False
+            For Each candidate As String In Order(settings)
+                If TokenFor(settings, candidate).Length > 0 Then Return True
+            Next
+            Return False
         End Function
 
         ''' <summary>

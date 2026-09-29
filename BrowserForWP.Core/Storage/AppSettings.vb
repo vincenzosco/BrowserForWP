@@ -23,6 +23,23 @@ Namespace Storage
         Public Const DefaultSearchTemplate As String = "https://lite.duckduckgo.com/lite/?q={q}"
         Public Const DefaultDohUrl As String = "https://cloudflare-dns.com/dns-query"
 
+        ''' <summary>
+        ''' The hosted renderer this build ships pointed at: the server this
+        ''' project's operator runs, where Chromium draws pages this phone cannot.
+        '''
+        ''' It is an address and not a credential. The device token is issued per
+        ''' device by the server's own `bfwp-device add` and pasted in by hand, so an
+        ''' install that has not been registered is pointed at a server it cannot
+        ''' use yet -- which RemoteServers.Ready reports as "not configured" and
+        ''' EngineChoice turns into the on-device engine, rather than a page sent
+        ''' nowhere. See ARCHITECTURE.md Law 5 for what this default discloses.
+        '''
+        ''' No port: the render channel's own port is RemoteEngine.DefaultPort
+        ''' (8443), and the port lives there so that a url which spells one out can
+        ''' still override it.
+        ''' </summary>
+        Public Const DefaultHostedUrl As String = "https://34.132.106.149"
+
         ''' <summary>Maximum tabs kept across a session restore (speed + memory).</summary>
         Public Const MaxSessionTabs As Integer = 10
 
@@ -36,13 +53,13 @@ Namespace Storage
             BlockTrackers = True
             RestoreSession = False
             LiteRedirects = True
-            EngineSetting = Engine.EngineChoice.Auto
+            EngineSetting = Engine.EngineChoice.Remote
             LastSessionTabs = String.Empty
-            RemotePrimaryUrl = String.Empty
+            RemotePrimaryUrl = DefaultHostedUrl
             RemotePrimaryToken = String.Empty
             RemoteSecondaryUrl = String.Empty
             RemoteSecondaryToken = String.Empty
-            RemoteEnabled = False
+            RemoteEnabled = True
         End Sub
 
         Public Property Homepage As String
@@ -63,18 +80,21 @@ Namespace Storage
         ''' of the same name inside this class and every use of EngineChoice.Auto
         ''' below it would become a reference to a String.
         '''
-        ''' Auto is the default, which means "the system engine unless a measurement
-        ''' says otherwise": upgrading this app must not change what a user sees
-        ''' without being asked.
+        ''' Remote is the default: pages are drawn by the hosted server, because on
+        ''' this platform that is the only engine that can draw a modern page at all.
+        ''' What keeps that honest is EngineChoice.Decide, which falls back to the
+        ''' on-device engine whenever the hosted one is not usable, and Auto for the
+        ''' people who would rather let the measurement decide.
         ''' </summary>
         Public Property EngineSetting As String
 
         Public Property LastSessionTabs As String
 
         ''' <summary>
-        ''' Where pages are rendered when the remote engine is chosen. EMPTY by
-        ''' default: this build bakes in no server at all, so nothing a user reads
-        ''' leaves their device until they configure one and turn it on.
+        ''' Where pages are rendered when the hosted engine is chosen. Points at
+        ''' DefaultHostedUrl out of the box, and a person who runs their own server
+        ''' replaces it here -- which is also how the operator of the default becomes
+        ''' somebody they chose instead of somebody they did not.
         ''' </summary>
         Public Property RemotePrimaryUrl As String
 
@@ -91,8 +111,31 @@ Namespace Storage
         ''' <summary>Falls back to the primary's token when empty.</summary>
         Public Property RemoteSecondaryToken As String
 
-        ''' <summary>Off until a person turns it on. See ARCHITECTURE.md Law 5.</summary>
+        ''' <summary>
+        ''' ON by default, because the hosted engine is the default engine here. It
+        ''' is the disclosure's switch as much as the engine's: turning it off keeps
+        ''' every page on the device. See ARCHITECTURE.md Law 5.
+        ''' </summary>
         Public Property RemoteEnabled As Boolean
+
+        ''' <summary>
+        ''' These settings as Core's rules take them. ONE definition, used by the shell
+        ''' (to ask whether the hosted engine is usable before choosing it) and by
+        ''' RemoteEngine (to decide where to connect), so the two cannot come to
+        ''' disagree about which server a person just configured.
+        '''
+        ''' Built on every call, never cached: the settings screen can change the
+        ''' server between two navigations.
+        ''' </summary>
+        Public Function RemoteSettings() As Remote.RemoteServerSettings
+            Dim snapshot As New Remote.RemoteServerSettings()
+            snapshot.PrimaryUrl = RemotePrimaryUrl
+            snapshot.PrimaryToken = RemotePrimaryToken
+            snapshot.SecondaryUrl = RemoteSecondaryUrl
+            snapshot.SecondaryToken = RemoteSecondaryToken
+            snapshot.RemoteEnabled = RemoteEnabled
+            Return snapshot
+        End Function
 
         ''' <summary>Build a search URL from raw query text.</summary>
         Public Function SearchUrlFor(queryText As String) As String
