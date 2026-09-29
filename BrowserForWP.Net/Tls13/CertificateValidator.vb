@@ -13,6 +13,12 @@
 '      man-in-the-middle. RFC 6125 hostname matching is therefore done here, on
 '      the SAN, explicitly.
 '
+'      The host may be a name or a literal ADDRESS, and those live in different
+'      SAN entries: dNSName and iPAddress. Matching only the first means a
+'      certificate issued for an address is refused while its chain validates,
+'      which is what happened here until the deployed server was pointed at. See
+'      MatchSubjectAltName.
+'
 ' Before this file, the prototype verified that a live server's CertificateVerify
 ' signature checks out under the leaf's public key. That check proves the peer
 ' holds the private key; it says nothing about whether the certificate was
@@ -93,10 +99,244 @@ Namespace Tls13
             ' CertificateInfo parsing is done on the leaf's DER directly, because
             ' the WinRT Certificate type exposes no SAN accessor.
             Dim info = X509Reader.Read(chainDer(0))
-            Dim match = MatchHostname(info.DnsNames, hostName)
+            Dim match = MatchSubjectAltName(info, hostName)
 
             Return New CertificateValidationResult(trusted, match.IsMatch,
                                                    chainStatus, match.MatchedName)
+        End Function
+
+        ''' <summary>
+        ''' Matches what we asked for against what the certificate is for, taking
+        ''' the host as it is: a literal address is matched against the SAN's
+        ''' iPAddress entries, anything else against its dNSName entries.
+        '''
+        ''' THESE ARE TWO CHECKS, NOT ONE, and conflating them is the defect this
+        ''' function exists for. RFC 6125 covers names; an address in a certificate
+        ''' is an iPAddress GeneralName (RFC 5280 §4.2.1.6), which no dNSName rule
+        ''' can ever match. A certificate for an address therefore failed here with
+        ''' "nothing to match against" while its chain validated perfectly, and it is
+        ''' not an exotic mistake: OpenSSL's own hostname check has it, measured on
+        ''' 2026-09-29 against the deployed server -- `-verify_hostname 1.2.3.4` refuses
+        ''' a certificate whose SAN holds that address while `x509 -checkip` accepts
+        ''' it.
+        ''' </summary>
+        Public Shared Function MatchSubjectAltName(info As CertificateInfo,
+                                                  hostName As String) As HostnameMatchResult
+            If String.IsNullOrEmpty(hostName) Then
+                Throw New ArgumentException("host required", "hostName")
+            End If
+            If info Is Nothing OrElse info.SubjectAltNames Is Nothing Then
+                ' No parsed SAN is not a pass. It is a failure to check, and a
+                ' failure to check must never read as "fine".
+                Return New HostnameMatchResult(False, Nothing)
+            End If
+
+            Dim addressBytes() As Byte = Nothing
+            If Not TryParseIpLiteral(hostName, addressBytes) Then
+                ' A name. The rules are unchanged, including that an empty SAN list
+                ' fails rather than matching nothing.
+                Return MatchHostname(info.SubjectAltNames.DnsNames, hostName)
+            End If
+
+            Dim addresses = info.SubjectAltNames.IpAddresses
+            If addresses IsNot Nothing Then
+                For Each entry In addresses
+                    If entry IsNot Nothing AndAlso
+                       entry.Length = addressBytes.Length AndAlso
+                       SameBytes(entry, addressBytes) Then
+                        Return New HostnameMatchResult(True, FormatIpLiteral(entry))
+                    End If
+                Next
+            End If
+
+            ' An address that is not in the SAN is a mismatch, and it must NOT fall
+            ' back to the name rules: a dNSName is never an address, and a fallback
+            ' would be a second chance for a certificate that did not earn the
+            ' first one.
+            Return New HostnameMatchResult(False, Nothing)
+        End Function
+
+        ''' <summary>
+        ''' Parses a host that IS an address into its bytes. False for every host
+        ''' that is a name -- which is not a failure but the branch the caller takes
+        ''' to the name rules.
+        ''' </summary>
+        Public Shared Function TryParseIpLiteral(hostName As String, ByRef addressBytes As Byte()) As Boolean
+            addressBytes = Nothing
+            If String.IsNullOrEmpty(hostName) Then Return False
+
+            Dim text As String = hostName.Trim()
+
+            ' A url spells an IPv6 host inside brackets, and the brackets belong to
+            ' the url rather than to the address.
+            If text.Length >= 2 AndAlso text.Chars(0) = "["c AndAlso
+               text.Chars(text.Length - 1) = "]"c Then
+                text = text.Substring(1, text.Length - 2)
+            End If
+
+            If text.Length = 0 Then Return False
+
+            ' A zone id is a local scope ("fe80::1%eth0") and a suffix is a network,
+            ' not a host: an iPAddress entry has nowhere to put either, so neither
+            ' can ever be confirmed by this check. Refused rather than half-matched.
+            If text.IndexOf("%"c) >= 0 OrElse text.IndexOf("/"c) >= 0 Then Return False
+
+            If text.IndexOf(":"c) >= 0 Then Return TryParseIpv6Literal(text, addressBytes)
+            Return TryParseIpv4Literal(text, addressBytes)
+        End Function
+
+        ''' <summary>Dotted quad, and nothing a second parser could read differently.</summary>
+        Private Shared Function TryParseIpv4Literal(text As String, ByRef addressBytes As Byte()) As Boolean
+            Dim parts As String() = text.Split("."c)
+            If parts.Length <> 4 Then Return False
+
+            Dim bytes(3) As Byte
+            For i As Integer = 0 To 3
+                Dim part As String = parts(i)
+                If part.Length = 0 OrElse part.Length > 3 Then Return False
+                ' "010" is octal to some parsers and decimal to others. A spelling
+                ' that means two things is refused rather than guessed.
+                If part.Length > 1 AndAlso part.Chars(0) = "0"c Then Return False
+
+                Dim value As Integer = 0
+                For Each digit As Char In part
+                    If digit < "0"c OrElse digit > "9"c Then Return False
+                    value = value * 10 + (AscW(digit) - AscW("0"c))
+                Next
+                If value > 255 Then Return False
+                bytes(i) = CByte(value)
+            Next
+            addressBytes = bytes
+            Return True
+        End Function
+
+        ''' <summary>
+        ''' IPv6 text to 16 bytes, including a "::" run and a trailing dotted quad.
+        '''
+        ''' Written out rather than delegated: there is no IPv6 parser here to
+        ''' borrow from, and the "::" rule (RFC 4291 §2.2) is the part worth having
+        ''' in exactly one place.
+        ''' </summary>
+        Private Shared Function TryParseIpv6Literal(text As String, ByRef addressBytes As Byte()) As Boolean
+            Dim gapAt As Integer = text.IndexOf("::", StringComparison.Ordinal)
+            If gapAt >= 0 AndAlso text.IndexOf("::", gapAt + 1, StringComparison.Ordinal) >= 0 Then
+                ' Two runs of zeros would make it ambiguous which one the "::" is.
+                Return False
+            End If
+
+            Dim headText As String = If(gapAt >= 0, text.Substring(0, gapAt), text)
+            Dim tailText As String = If(gapAt >= 0, text.Substring(gapAt + 2), String.Empty)
+
+            Dim headBytes() As Byte = Nothing
+            Dim tailBytes() As Byte = Nothing
+            If Not TryParseIpv6Groups(headText, headBytes) Then Return False
+            If Not TryParseIpv6Groups(tailText, tailBytes) Then Return False
+
+            Dim gapBytes As Integer = 16 - headBytes.Length - tailBytes.Length
+            If gapAt >= 0 Then
+                ' "::" stands for AT LEAST one group of zeros, so the two sides
+                ' cannot already fill the address when the gap is written down.
+                If gapBytes <= 0 Then Return False
+            ElseIf gapBytes <> 0 Then
+                Return False
+            End If
+
+            Dim bytes(15) As Byte
+            Array.Copy(headBytes, 0, bytes, 0, headBytes.Length)
+            Array.Copy(tailBytes, 0, bytes, 16 - tailBytes.Length, tailBytes.Length)
+            addressBytes = bytes
+            Return True
+        End Function
+
+        ''' <summary>
+        ''' One side of an IPv6 address, as bytes. Empty text is the empty side of a
+        ''' "::" and is valid; a malformed side returns False.
+        ''' </summary>
+        Private Shared Function TryParseIpv6Groups(text As String, ByRef groupBytes As Byte()) As Boolean
+            Dim bytes As New List(Of Byte)()
+            If text.Length > 0 Then
+                Dim parts As String() = text.Split(":"c)
+                For i As Integer = 0 To parts.Length - 1
+                    Dim part As String = parts(i)
+                    ' An empty part means "::" inside one side (RFC 4291 §2.2 writes
+                    ' the gap between the sides, never inside one).
+                    If part.Length = 0 Then Return False
+
+                    If part.IndexOf("."c) >= 0 Then
+                        ' A dotted quad is allowed only as the LAST part, where it
+                        ' stands for two groups of bytes: "::ffff:192.0.2.1".
+                        If i <> parts.Length - 1 Then Return False
+                        Dim quad() As Byte = Nothing
+                        If Not TryParseIpv4Literal(part, quad) Then Return False
+                        For Each octet As Byte In quad
+                            bytes.Add(octet)
+                        Next
+                    Else
+                        If part.Length > 4 Then Return False
+                        Dim value As Integer = 0
+                        For Each hexChar As Char In part
+                            Dim nibble As Integer = 0
+                            If Not TryHexNibble(hexChar, nibble) Then Return False
+                            value = (value << 4) Or nibble
+                        Next
+                        bytes.Add(CByte((value >> 8) And &HFF))
+                        bytes.Add(CByte(value And &HFF))
+                    End If
+                Next
+            End If
+            groupBytes = bytes.ToArray()
+            Return True
+        End Function
+
+        Private Shared Function TryHexNibble(hexChar As Char, ByRef value As Integer) As Boolean
+            Select Case hexChar
+                Case "0"c To "9"c
+                    value = AscW(hexChar) - AscW("0"c)
+                    Return True
+                Case "a"c To "f"c
+                    value = AscW(hexChar) - AscW("a"c) + 10
+                    Return True
+                Case "A"c To "F"c
+                    value = AscW(hexChar) - AscW("A"c) + 10
+                    Return True
+                Case Else
+                    value = 0
+                    Return False
+            End Select
+        End Function
+
+        Private Shared Function SameBytes(left As Byte(), right As Byte()) As Boolean
+            If left.Length <> right.Length Then Return False
+            For i As Integer = 0 To left.Length - 1
+                If left(i) <> right(i) Then Return False
+            Next
+            Return True
+        End Function
+
+        ''' <summary>
+        ''' An address for a diagnostic message. IPv4 as a dotted quad; IPv6 as
+        ''' eight hex groups with no "::" compression -- longer to read, and never
+        ''' silently something other than the bytes it came from. Formatting exists
+        ''' only for this: matching compares bytes.
+        ''' </summary>
+        Public Shared Function FormatIpLiteral(address As Byte()) As String
+            If address Is Nothing Then Return String.Empty
+
+            If address.Length = 4 Then
+                Return address(0).ToString() & "." & address(1).ToString() & "." &
+                       address(2).ToString() & "." & address(3).ToString()
+            End If
+
+            If address.Length = 16 Then
+                Dim groups As New List(Of String)()
+                For i As Integer = 0 To 7
+                    Dim group As Integer = (CInt(address(i * 2)) << 8) Or CInt(address(i * 2 + 1))
+                    groups.Add(group.ToString("x4"))
+                Next
+                Return String.Join(":", groups.ToArray())
+            End If
+
+            Return String.Empty
         End Function
 
         ''' <summary>Outcome of RFC 6125 hostname matching.</summary>

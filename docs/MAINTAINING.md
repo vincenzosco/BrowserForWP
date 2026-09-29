@@ -969,26 +969,40 @@ the interface, so the shell wires whichever engine it built and therefore knows
     in the message either: it cannot be confirmed without a handset, and the
     decoders reject trailing bytes, so adding it later costs a protocol change in
     both repositories plus the vectors.
-21. **The client matches a NAME, and the deployed certificate is for an ADDRESS.**
-    `X509Reader` reads only the `dNSName` entries of `subjectAltName`
-    (`ExtractDnsNames`), and `CertificateValidator.MatchHostname` takes that list
-    and nothing else. A Let's Encrypt certificate for an IP carries the address in
-    an `iPAddress` entry and **no** common name at all, so the match fails with
-    "nothing to match against" -- on a chain that validates perfectly, and
-    refused rather than reported, because there is no separate sentence for it.
-    This is not an exotic gap: OpenSSL's own hostname check behaves the same way,
-    measured 2026-09-29 against this very server (`-verify_hostname` ->
+21. **HALF CLOSED in Round 17 — the client matched a NAME and the deployed
+    certificate is for an ADDRESS.** The first gate was ours and is shut:
+    `X509Reader` now collects the SAN's **iPAddress** entries as well as its
+    `dNSName` ones, and `CertificateValidator.MatchSubjectAltName` asks which kind
+    of host we were given and takes the matching branch. The reason it was ever
+    written the other way is worth keeping: a certificate for an address carries
+    it in an `iPAddress` entry and, under Let's Encrypt's `shortlived` profile,
+    **no** common name at all, so name matching failed with "nothing to match
+    against" on a chain that validated perfectly. It is not an exotic mistake --
+    OpenSSL's own hostname check behaves identically (`-verify_hostname` ->
     `verify error:num=62:hostname mismatch` on a certificate that `openssl x509
-    -checkip` accepts), because name matching and address matching are two
-    different checks in every TLS client and only one of them usually gets
-    written. The second gate is the trust store, and it is not in our hands: the
-    chain ends at `ISRG Root X2` cross-signed by `ISRG Root X1`, and whether a
-    2014-era handset was ever issued either root cannot be measured from this
-    host. A pin cannot substitute for it -- item 12 -- because `IsValid` is the
-    chain AND the name, by design. So the phone can be pointed at a server that is
-    reachable, publicly trusted and verified with a real client, and still refuse
-    every byte; both gates are written down here rather than discovered on the
-    device.
+    -checkip` accepts, measured against this server) -- because name matching and
+    address matching are two different checks in every TLS client, and only one of
+    them usually gets written.
+
+    **The second gate is not ours and is still shut.** The chain ends at `ISRG
+    Root X2` cross-signed by `ISRG Root X1`, and whether a 2014-era handset was
+    ever issued either root cannot be measured from this host. A pin cannot
+    substitute for it -- item 12 -- because `IsValid` is the chain AND the name, by
+    design, and a design that lets a pin skip the chain is a decision for the
+    owner rather than a gap to be patched quietly. So the phone may still refuse
+    every byte at the trust step, and until a handset runs it, the honest status of
+    this item is "one gate closed, one unmeasured".
+22. **The SNI extension carries an IP literal, which RFC 6066 §3 says it must
+    not.** `ClientHelloBuilder` sends `server_name` with whatever host it was
+    given, including an address, and the extension is defined for host names
+    ("Literal IPv4 and IPv6 addresses are not permitted in HostName"). Measured
+    2026-09-29: the deployment's server accepts it and completes the handshake, and
+    `tools/proto/tls13.mjs` shows the literal going out, so nothing is broken
+    today. Written down rather than fixed because the change is to the handshake
+    itself, the only oracle for it is one server that tolerates the current form,
+    and a strict server is hypothetical until one is met. The change, when it is
+    worth making, is one line: omit the extension when the host parses as an
+    address, which `CertificateValidator.TryParseIpLiteral` already answers.
 
 ### Error taxonomy
 
@@ -1880,6 +1894,80 @@ logged and five to six devices registered; from outside, the four commands above
 the renewal loop end to end; `certbot-renew.timer` enabled with its next run listed.
 **Not verified:** the phone (item 21), and the audio path, unchanged from Round 15.
 
+### Round 17 — the client answers for an address, and one gate closes
+
+Round 16 ended with a deployment nobody could use: a publicly trusted certificate
+for an address that this client's TLS stack could not match. The owner's answer to
+the choice put to them was "decide", so the rule was: close what is ours, write
+down what is not, and add nothing that weakens a check.
+
+**What changed.** `X509Reader` reads the SAN's `iPAddress` entries (tag `0x87`) as
+**raw bytes** -- 4 for IPv4, 16 for IPv6 -- and `CertificateValidator` gained
+`MatchSubjectAltName`, which parses the host into bytes and compares bytes when the
+host is an address, and falls through to the untouched RFC 6125 name rules when it
+is a name. Comparing bytes rather than text means no rule about spelling an address
+can be wrong: no leading zeros, no case, no `::` compression, no formatting at all
+except in the diagnostic sentence. An address that is not in the SAN does **not**
+fall back to the name rules -- a second chance would be a check that did not earn
+its first.
+
+**Verified, and this is the interesting part: against the deployment.**
+
+```
+node tools/proto/tls13.mjs 34.132.106.149 8443 --handshake-only
+```
+
+`50 checks, 0 failure(s)`, including `the certificate is for this host
+34.132.106.149` -- a real handshake against the real server, with the mirror of the
+VB rule deciding. `--handshake-only` is new and exists for this: the render server
+is not an HTTP server, so without it the run ends red for a reason that has nothing
+to do with certificates. Against `example.com` the same file is now `53 checks, 0
+failure(s)`.
+
+**Fifteen offline cases, one of them the deployment's own SAN** (`IP Address:34.132.106.149`,
+captured from the live certificate), covering: a different address, a name against
+an address SAN, an address against a name SAN, a mixed SAN, two spellings of one
+IPv6 address, a bracketed host, a dotted-quad tail, and three spellings that must be
+**refused** because they mean more than one thing (a leading zero, a zone id
+`%eth0`). Plus six **source contracts** reading the VB itself, because a
+transliteration runs its own copy of the rule -- the defect that once let
+`engine-choice.mjs` pass with the `hostedReady` branch deleted from the VB. All
+three mutations are refused: removing the `iPAddress` branch from the reader,
+reverting the validator to name-only matching, and comparing an entry against
+itself.
+
+**Two defects found by running against reality rather than reading it.**
+
+- **The referee crashed on the deployed certificate before any check ran:**
+  `Cannot read properties of undefined (reading 'replace')`. Node reports
+  `subject` as **undefined**, not empty, for a certificate whose subject is empty,
+  and the `shortlived` profile issues exactly that -- no common name, the address in
+  the SAN only. A prototype that prints the subject is fine for a website and fails
+  on the first certificate that is only an address.
+- **A guest build had rewritten `tests/BrowserForWP.Core.Tests.vbproj`** with a
+  BOM, CRLF endings, an added `<Folder Include="My Project\" />` and no final
+  newline. Found by `git status` before committing, not by any check; reverted, and
+  the behaviour is already documented at "the loop" below (`devenv` rewrites the
+  projects it opens). The lesson is narrow and worth writing down: run `git status`
+  after a guest build, because the IDE's rewrites are not part of any diff that a
+  build prints.
+
+**What was deliberately NOT done.** A pin that would let a certificate skip the
+chain check, which is the only way this could work if the handset does not trust
+ISRG's roots. `IsValid` is the chain AND the name by design, item 12 says the pins
+are not even consulted by the render channel, and relaxing a certificate check to
+make something work is the owner's decision to take in the open -- not a patch. It
+is the alternative left standing in item 21.
+
+**Verified:** `tools/proto/tls13.mjs` (both runs, `50` and `53` checks, 0 failures),
+the three refused mutations, `node tools/check-vb.mjs` -> 16 groups / 0 findings,
+and six configurations in the guest, `BUILD_EXIT=0`: Debug/ARM, Debug/x86,
+Release/ARM, Release/x86 as solution builds, plus `BrowserForWP.vbproj` as Debug and
+Release `Any CPU` (the Release one also producing the package).
+**NOT re-run this round:** `tools/vm-devenv.cmd`, because no `.sln` and no project
+file changed -- and it rewrites project files, which is the finding above.
+**Not verified:** anything on a handset, unchanged.
+
 ## The loop
 
 Every change follows five steps, in order. The canonical version lives in
@@ -2035,7 +2123,11 @@ capture end needs a sound card; see the notes in `Docker-BrowserForWP`).
 - [ ] `tools\vm-devenv.cmd` in the guest → `DEVENV_EXIT=0`, seven projects
       loaded, no `not installed` line
 - [ ] `node tools/proto/w25519.mjs` → `18 checks, 0 failure(s)`
-- [ ] `node tools/proto/tls13.mjs example.com` → `31 checks, 0 failure(s)`
+- [ ] `node tools/proto/tls13.mjs example.com` → `53 checks, 0 failure(s)`
+- [ ] `node tools/proto/tls13.mjs 34.132.106.149 8443 --handshake-only` →
+      `50 checks, 0 failure(s)`, including `the certificate is for this host`
+      (needs the deployment up; the 15 offline host-matching cases and the 6 source
+      contracts run either way)
 - [ ] `RUNS=4 bash tools/wmc9999-probe.sh` → `distinct XBF hash pairs across 12 runs: 1`
 - [ ] Handset: TLS probe reports `TLS 1.3`
 - [ ] Handset: switch the phone to Italian — **every** UI string changes; no

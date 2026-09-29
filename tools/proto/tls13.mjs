@@ -29,11 +29,19 @@
 //    node tools/proto/tls13.mjs example.com   # against a specific host
 //    node tools/proto/tls13.mjs host 443 /    # custom path
 //
+//  Against the render server, which is NOT an HTTP server:
+//    node tools/proto/tls13.mjs 34.132.106.149 8443 --handshake-only
+//  That run answers the one question the deployment raises and no other: does
+//  this client accept the certificate the server presents, for the host we
+//  asked? It is the mirror of the phone's own check, and the certificate it
+//  presents is a Let's Encrypt certificate FOR AN ADDRESS with no common name.
+//
 //  Exits non-zero on any failure. Prints every protocol step it takes.
 // ═══════════════════════════════════════════════════════════════════════════
 
 import net from 'node:net';
 import crypto from 'node:crypto';
+import fs from 'node:fs';
 
 // ── Assertion bookkeeping (mirrors tools/gen-vectors.mjs) ───────────────────
 let checks = 0;
@@ -492,26 +500,215 @@ function computeFinished(finishedKey, transcriptHash) {
   return hmac(finishedKey, transcriptHash);
 }
 
-// Hostname match against subjectAltName (RFC 6125).
-function hostnameMatches(cert, host) {
-  const c = new crypto.X509Certificate(cert);
-  const san = c.subjectAltName || '';
-  const names = san.split(',').map(s => s.trim())
-                   .filter(s => s.toUpperCase().startsWith('DNS:'))
-                   .map(s => s.slice(4).trim());
-  const lower = host.toLowerCase();
-  for (const n of names) {
-    const pat = n.toLowerCase();
-    if (pat === lower) return { ok: true, matched: pat };
-    if (pat.startsWith('*.')) {
-      // Wildcards match exactly one label, and never a bare public suffix.
-      const rest = lower.slice(lower.indexOf('.') + 1);
-      if (lower.includes('.') && rest === pat.slice(2)) {
-        return { ok: true, matched: pat };
-      }
+// What the certificate is FOR: a name, or an address.
+//
+// The mirror of CertificateValidator.MatchSubjectAltName, and the reason it is
+// two checks rather than one: a host that is an address appears in the SAN as an
+// iPAddress entry, which no dNSName rule can ever match. The deployed server's
+// certificate is exactly that case -- a Let's Encrypt certificate for a bare IP,
+// under the `shortlived` profile, which issues NO common name -- so the name-only
+// version of this function refused a certificate that is correct in every
+// respect. Measured against it on 2026-09-29.
+//
+// Both sides are compared as BYTES: the address parsed out of the host, the entry
+// read from the SAN. That leaves no rule about spelling an address (leading
+// zeros, case, "::") able to disagree with the VB.
+function ipLiteralToBytes(text) {
+  let s = String(text).trim();
+  if (s.length >= 2 && s[0] === '[' && s[s.length - 1] === ']') s = s.slice(1, -1);
+  if (s.length === 0 || s.includes('%') || s.includes('/')) return null;
+  return s.includes(':') ? ipv6ToBytes(s) : ipv4ToBytes(s);
+}
+
+function ipv4ToBytes(text) {
+  const parts = text.split('.');
+  if (parts.length !== 4) return null;
+  const out = [];
+  for (const part of parts) {
+    if (part.length === 0 || part.length > 3) return null;
+    // "010" is octal to some parsers and decimal to others: refused, not guessed.
+    if (part.length > 1 && part[0] === '0') return null;
+    if (!/^[0-9]+$/.test(part)) return null;
+    const value = Number(part);
+    if (value > 255) return null;
+    out.push(value);
+  }
+  return Buffer.from(out);
+}
+
+function ipv6ToBytes(text) {
+  const gapAt = text.indexOf('::');
+  if (gapAt >= 0 && text.indexOf('::', gapAt + 1) >= 0) return null;
+  const head = gapAt >= 0 ? text.slice(0, gapAt) : text;
+  const tail = gapAt >= 0 ? text.slice(gapAt + 2) : '';
+  const h = ipv6SideToBytes(head);
+  const t = ipv6SideToBytes(tail);
+  if (!h || !t) return null;
+  const gap = 16 - h.length - t.length;
+  if (gapAt >= 0) {
+    // "::" stands for at least one group of zeros (RFC 4291 §2.2).
+    if (gap <= 0) return null;
+  } else if (gap !== 0) {
+    return null;
+  }
+  return Buffer.concat([h, Buffer.alloc(gap), t]);
+}
+
+function ipv6SideToBytes(text) {
+  if (text.length === 0) return Buffer.alloc(0);
+  const out = [];
+  const parts = text.split(':');
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    if (part.length === 0) return null;
+    if (part.includes('.')) {
+      // A dotted quad only as the LAST part, where it stands for two groups.
+      if (i !== parts.length - 1) return null;
+      const quad = ipv4ToBytes(part);
+      if (!quad) return null;
+      out.push(...quad);
+    } else {
+      if (part.length > 4 || !/^[0-9a-fA-F]+$/.test(part)) return null;
+      const value = parseInt(part, 16);
+      out.push((value >> 8) & 0xff, value & 0xff);
     }
   }
-  return { ok: false, names };
+  return Buffer.from(out);
+}
+
+function formatIpBytes(bytes) {
+  if (bytes.length === 4) return [...bytes].join('.');
+  const groups = [];
+  for (let i = 0; i < 16; i += 2) groups.push(bytes.readUInt16BE(i).toString(16).padStart(4, '0'));
+  return groups.join(':');
+}
+
+function subjectAltNameEntries(sanText) {
+  const names = [];
+  const addresses = [];
+  for (const raw of String(sanText || '').split(',')) {
+    const entry = raw.trim();
+    if (/^DNS:/i.test(entry)) {
+      names.push(entry.slice(4).trim());
+    } else if (/^IP Address:/i.test(entry)) {
+      const bytes = ipLiteralToBytes(entry.slice(11).trim());
+      if (bytes) addresses.push(bytes);
+    }
+  }
+  return { names, addresses };
+}
+
+function matchSubjectAltName(san, host) {
+  const hostBytes = ipLiteralToBytes(host);
+  if (!hostBytes) {
+    // A name: the RFC 6125 rules, unchanged.
+    const lower = host.toLowerCase();
+    for (const n of san.names) {
+      const pat = n.toLowerCase();
+      if (pat === lower) return { ok: true, matched: pat };
+      if (pat.startsWith('*.')) {
+        // Wildcards match exactly one label, and never a bare public suffix.
+        const rest = lower.slice(lower.indexOf('.') + 1);
+        if (lower.includes('.') && rest === pat.slice(2)) {
+          return { ok: true, matched: pat };
+        }
+      }
+    }
+    return { ok: false, names: san.names };
+  }
+  for (const entry of san.addresses) {
+    if (entry.length === hostBytes.length && entry.equals(hostBytes)) {
+      return { ok: true, matched: formatIpBytes(entry) };
+    }
+  }
+  // An address that is not in the SAN does NOT fall back to the name rules: a
+  // dNSName is never an address, and a fallback would be a second chance for a
+  // certificate that did not earn the first one.
+  return { ok: false, names: san.names, addresses: san.addresses };
+}
+
+function hostnameMatches(cert, host) {
+  const c = new crypto.X509Certificate(cert);
+  return matchSubjectAltName(subjectAltNameEntries(c.subjectAltName || ''), host);
+}
+
+// ── What the certificate is for: the executable half ─────────────────────────
+//
+// One case here is the DEPLOYED certificate's SAN, verbatim as Node prints it
+// (captured 2026-09-29 from 34.132.106.149:8443). The rest are the spellings the
+// parse has to get right, including the ones that must be REFUSED because they
+// mean more than one thing.
+const HOST_MATCH_CASES = [
+  { san: 'IP Address:34.132.106.149', host: '34.132.106.149', ok: true,
+    why: "the deployed server's own SAN" },
+  { san: 'IP Address:34.132.106.149', host: '34.132.106.150', ok: false,
+    why: 'a different address' },
+  { san: 'IP Address:34.132.106.149', host: 'host.example.com', ok: false,
+    why: 'a name is not the address this SAN holds' },
+  { san: 'DNS:example.com', host: '34.132.106.149', ok: false,
+    why: 'an address never matches a dNSName entry' },
+  { san: 'DNS:example.com, IP Address:34.132.106.149', host: '34.132.106.149', ok: true,
+    why: 'a mixed SAN' },
+  { san: 'IP Address:2001:db8::1', host: '2001:0db8:0000:0000:0000:0000:0000:0001', ok: true,
+    why: 'two spellings, one address' },
+  { san: 'IP Address:2001:db8::1', host: '[2001:db8::1]', ok: true,
+    why: 'a url brackets an IPv6 host' },
+  { san: 'IP Address:2001:db8::2', host: '2001:db8::1', ok: false,
+    why: 'the last group differs' },
+  { san: 'IP Address:0:0:0:0:0:ffff:c000:201', host: '::ffff:192.0.2.1', ok: true,
+    why: 'a dotted-quad tail is two groups' },
+  { san: 'IP Address:34.132.106.149', host: '034.132.106.149', ok: false,
+    why: 'a leading zero means two things, so it is refused' },
+  { san: 'IP Address:34.132.106.149', host: 'fe80::1%eth0', ok: false,
+    why: 'a zone id is a scope, and an iPAddress entry has nowhere to put one' },
+  { san: 'DNS:*.example.com', host: 'a.example.com', ok: true,
+    why: 'the name rules are unchanged' },
+  { san: 'DNS:*.example.com', host: 'a.b.example.com', ok: false,
+    why: 'a wildcard is one label' },
+  { san: 'DNS:*.example.com', host: 'example.com', ok: false,
+    why: 'a wildcard is never the bare domain' },
+  { san: '', host: '34.132.106.149', ok: false,
+    why: 'no SAN at all fails for an address too, rather than passing by default' },
+];
+
+// The VB this file mirrors. A transliteration carries its own copy of every rule,
+// so a branch deleted from the VB leaves this file green -- the failure mode that
+// tools/proto/engine-choice.mjs shipped once. These read the source.
+const VB_SOURCE_CONTRACTS = [
+  ['BrowserForWP.Net/Tls13/X509Reader.vb',
+   /TagContextIpAddress As Byte = &H87/,
+   'the VB reader names the iPAddress tag'],
+  ['BrowserForWP.Net/Tls13/X509Reader.vb',
+   /name\.Tag = TagContextIpAddress/,
+   'the VB reader collects iPAddress entries'],
+  ['BrowserForWP.Net/Tls13/X509Reader.vb',
+   /If name\.Length = 4 OrElse name\.Length = 16 Then/,
+   'the VB reader keeps only real address lengths'],
+  ['BrowserForWP.Net/Tls13/CertificateValidator.vb',
+   /Dim match = MatchSubjectAltName\(info, hostName\)/,
+   'the VB validator dispatches on the host'],
+  ['BrowserForWP.Net/Tls13/CertificateValidator.vb',
+   /If Not TryParseIpLiteral\(hostName, addressBytes\) Then/,
+   'the VB validator parses a literal address'],
+  ['BrowserForWP.Net/Tls13/CertificateValidator.vb',
+   /SameBytes\(entry, addressBytes\)/,
+   'the VB compares address BYTES, not spellings'],
+];
+
+function verifyWhatTheCertificateIsFor() {
+  console.log('-- What the certificate is for (offline)');
+  for (const c of HOST_MATCH_CASES) {
+    const res = matchSubjectAltName(subjectAltNameEntries(c.san), c.host);
+    const detail = c.ok
+      ? (res.ok ? `matched ${res.matched}` : 'EXPECTED A MATCH, refused')
+      : (res.ok ? `MATCHED ${res.matched}, should have been refused` : 'refused');
+    check(res.ok === c.ok, `host match: ${c.host} against "${c.san || '(no SAN)'}"`,
+          `${detail} -- ${c.why}`);
+  }
+  for (const [file, pattern, label] of VB_SOURCE_CONTRACTS) {
+    const text = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
+    check(pattern.test(text), label, text ? file : `${file} is missing`);
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -716,15 +913,23 @@ class Tls13ClientProto {
     this.addTranscript(m.raw);
 
     const leaf = new crypto.X509Certificate(certs[0]);
-    ok('leaf subject', leaf.subject.replace(/\n/g, ' ').slice(0, 60));
-    ok('leaf issuer ', leaf.issuer.replace(/\n/g, ' ').slice(0, 60));
+    // `subject` is UNDEFINED -- not empty -- for a certificate with an empty
+    // subject, and an empty subject is exactly what the `shortlived` profile
+    // issues: no common name, the address in the SAN only. Reading it unguarded
+    // crashed this prototype on the deployed server's own certificate, before a
+    // single check ran, which is how the crash was found.
+    ok('leaf subject', (leaf.subject ?? '(empty: no common name)').replace(/\n/g, ' ').slice(0, 60));
+    ok('leaf issuer ', (leaf.issuer ?? '(empty)').replace(/\n/g, ' ').slice(0, 60));
+    ok('leaf SAN    ', (leaf.subjectAltName ?? '(none)').slice(0, 80));
     check(leaf.validTo !== undefined &&
           Date.parse(leaf.validTo) > Date.now(), 'leaf certificate not expired',
           `valid until ${leaf.validTo}`);
 
     const hostMatch = hostnameMatches(certs[0], this.host);
-    check(hostMatch.ok, 'hostname matches subjectAltName',
-          hostMatch.ok ? hostMatch.matched : `names=${hostMatch.names.join('|')}`);
+    check(hostMatch.ok, 'the certificate is for this host',
+          hostMatch.ok
+            ? hostMatch.matched
+            : `names=${(hostMatch.names || []).join('|')}`);
 
     step('CertificateVerify');
     m = await this.nextHandshakeMessage(serverLayer);
@@ -790,12 +995,16 @@ class Tls13ClientProto {
 // ═══════════════════════════════════════════════════════════════════════════
 
 async function main() {
-  const host = process.argv[2] || 'cloudflare.com';
-  const port = Number(process.argv[3] || 443);
-  const path = process.argv[4] || '/';
+  const handshakeOnly = process.argv.includes('--handshake-only');
+  const argv = process.argv.slice(2).filter((a) => !a.startsWith('--'));
+  const host = argv[0] || 'cloudflare.com';
+  const port = Number(argv[1] || 443);
+  const path = argv[2] || '/';
 
   console.log('TLS 1.3 client prototype — BrowserForWP');
-  console.log(`Target: https://${host}:${port}${path}`);
+  verifyWhatTheCertificateIsFor();
+  console.log(`\nTarget: https://${host}:${port}${path}`);
+  if (handshakeOnly) console.log('(--handshake-only: the HTTP request is skipped)');
 
   const client = new Tls13ClientProto(host);
   client.trace = !!process.env.TRACE;
@@ -806,6 +1015,20 @@ async function main() {
     if (process.env.TRACE) console.log(e.stack);
     console.log(`\n${checks} checks, ${failures} failure(s)`);
     process.exit(1);
+  }
+
+  // The render server is not an HTTP server: it answers with sealed frames, so the
+  // request below would earn a closed connection and a failed status-line check.
+  // What this prototype has to prove there is the handshake, the
+  // CertificateVerify, and whether the certificate is FOR the host we asked --
+  // which is every certificate check the phone's own TLS stack performs. An early
+  // exit with its own summary keeps that run honest instead of red for the wrong
+  // reason.
+  if (handshakeOnly) {
+    ok('stopped before the HTTP request', '--handshake-only');
+    console.log(`\n${checks} checks, ${failures} failure(s)`);
+    client.sock.destroy();
+    process.exit(failures === 0 ? 0 : 1);
   }
 
   step('HTTP request over the established channel');

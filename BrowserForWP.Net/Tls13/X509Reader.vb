@@ -143,14 +143,50 @@ Namespace Tls13
         End Function
     End Class
 
+    ''' <summary>
+    ''' The subjectAltName list, in the two forms a TLS client matches against.
+    '''
+    ''' WHY THE ADDRESSES ARE BYTES AND NOT TEXT. An iPAddress entry is 4 raw bytes
+    ''' (IPv4) or 16 (IPv6), and the host being matched arrives as text. Parsing the
+    ''' host to bytes and comparing bytes means there is exactly ONE
+    ''' representation in play, so no rule about how to spell an address can be
+    ''' wrong -- no leading zeros, no upper or lower case, no "::" compression to
+    ''' argue about. Formatting exists only for the diagnostic message, where a
+    ''' human reads it and a wrong answer costs nothing.
+    '''
+    ''' A SAN with neither list is not "fine by default": both are empty and every
+    ''' match fails, which is what the comments below rely on.
+    ''' </summary>
+    Public NotInheritable Class SubjectAltNames
+
+        Public Sub New(dnsNames As IList(Of String), ipAddresses As IList(Of Byte()))
+            Me.DnsNames = dnsNames
+            Me.IpAddresses = ipAddresses
+        End Sub
+
+        ''' <summary>dNSName entries (RFC 6125 §4.2.1.6).</summary>
+        Public ReadOnly DnsNames As IList(Of String)
+
+        ''' <summary>iPAddress entries, raw: 4 bytes for IPv4, 16 for IPv6.</summary>
+        Public ReadOnly IpAddresses As IList(Of Byte())
+
+        ''' <summary>True when the extension listed nothing this client can match on.</summary>
+        Public ReadOnly Property IsEmpty As Boolean
+            Get
+                Return (DnsNames Is Nothing OrElse DnsNames.Count = 0) AndAlso
+                       (IpAddresses Is Nothing OrElse IpAddresses.Count = 0)
+            End Get
+        End Property
+    End Class
+
     ''' <summary>The pieces of an X.509 certificate a TLS client actually needs.</summary>
     Public NotInheritable Class CertificateInfo
 
         Public Sub New(publicKeyAlgorithmOid As String, publicKeyBlob As Byte(),
-                       dnsNames As IList(Of String))
+                       names As SubjectAltNames)
             Me.PublicKeyAlgorithmOid = publicKeyAlgorithmOid
             Me.PublicKeyBlob = publicKeyBlob
-            Me.DnsNames = dnsNames
+            Me.SubjectAltNames = names
         End Sub
 
         ''' <summary>SPKI algorithm OID, e.g. 1.2.840.10045.2.1 for EC.</summary>
@@ -163,8 +199,8 @@ Namespace Tls13
         ''' </summary>
         Public ReadOnly PublicKeyBlob As Byte()
 
-        ''' <summary>dNSName entries from the SAN extension (RFC 6125 §4.2.1.6).</summary>
-        Public ReadOnly DnsNames As IList(Of String)
+        ''' <summary>What the SAN extension holds: names and addresses.</summary>
+        Public ReadOnly SubjectAltNames As SubjectAltNames
     End Class
 
     ''' <summary>Extracts the fields above from a DER certificate.</summary>
@@ -173,6 +209,13 @@ Namespace Tls13
         Public Const OidEcPublicKey As String = "1.2.840.10045.2.1"
         Public Const OidRsaEncryption As String = "1.2.840.113549.1.1.1"
         Public Const OidSubjectAltName As String = "2.5.29.17"
+
+        ' GeneralName choices are context-specific tags, so the tag byte is the
+        ' choice number with the primitive bit set (RFC 5280 §4.2.1.6):
+        '   dNSName   [2] IA5String -> 0x82
+        '   iPAddress [7] OCTET STRING -> 0x87
+        Public Const TagContextDnsName As Byte = &H82
+        Public Const TagContextIpAddress As Byte = &H87
 
         Private Sub New()
         End Sub
@@ -245,7 +288,7 @@ Namespace Tls13
                 Throw New TlsProtocolException("unsupported public key algorithm " & algorithmOid)
             End If
 
-            Return New CertificateInfo(algorithmOid, blob, ExtractDnsNames(sanExtension))
+            Return New CertificateInfo(algorithmOid, blob, ReadSubjectAltNames(sanExtension))
         End Function
 
         Private Shared Function FindSubjectAltName(extensions As DerReader) As Byte()
@@ -268,22 +311,41 @@ Namespace Tls13
             Return Nothing
         End Function
 
-        ''' <summary>GeneralNames inside a SAN extension value; dNSName is [2] IA5String.</summary>
-        Private Shared Function ExtractDnsNames(sanExtensionValue As Byte()) As IList(Of String)
-            Dim names As New List(Of String)()
+        ''' <summary>
+        ''' GeneralNames inside a SAN extension value, split into the two kinds this
+        ''' client matches against.
+        '''
+        ''' The address entries were MISSING here, and their absence was not a
+        ''' visible failure: a certificate for an IP address carries the address in
+        ''' an iPAddress entry and, under Let's Encrypt's `shortlived` profile, no
+        ''' common name at all. Name matching therefore returned "no SAN to match
+        ''' against" for a certificate that is correct in every respect, and refused
+        ''' a chain that validated. Measured against the deployed server on
+        ''' 2026-09-29, where the client would have rejected it.
+        ''' </summary>
+        Private Shared Function ReadSubjectAltNames(sanExtensionValue As Byte()) As SubjectAltNames
+            Dim dnsNames As New List(Of String)()
+            Dim ipAddresses As New List(Of Byte())
             If sanExtensionValue Is Nothing OrElse sanExtensionValue.Length = 0 Then
-                Return names            ' no SAN at all; hostname verification must fail
+                ' No SAN at all; every match must fail rather than "pass by default".
+                Return New SubjectAltNames(dnsNames, ipAddresses)
             End If
 
             Dim generalNames = New DerReader(sanExtensionValue).ReadNested(DerReader.TagSequence)
             While generalNames.HasMore
                 Dim name = generalNames.ReadElement()
-                ' dNSName is context-specific, primitive, tag number 2 => 0x82.
-                If name.Tag = &H82 Then
-                    names.Add(Encoding.UTF8.GetString(name.Value(), 0, name.Length))
+                If name.Tag = TagContextDnsName Then
+                    dnsNames.Add(Encoding.UTF8.GetString(name.Value(), 0, name.Length))
+                ElseIf name.Tag = TagContextIpAddress Then
+                    ' 4 bytes or 16, and nothing else: an iPAddress of another
+                    ' length is malformed, and keeping it would only invite a
+                    ' comparison against bytes that are not an address.
+                    If name.Length = 4 OrElse name.Length = 16 Then
+                        ipAddresses.Add(name.Value())
+                    End If
                 End If
             End While
-            Return names
+            Return New SubjectAltNames(dnsNames, ipAddresses)
         End Function
 
         ''' <summary>Decodes a dotted-decimal OID.</summary>
