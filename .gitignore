@@ -58,6 +58,15 @@ __pycache__/
 # everything below is generated on demand:
 #   tools/gen-vectors.mjs  -> tools/out/*.json  (tracked, see docs)
 
+# Visual Studio running in the Windows guest, over the shared folder. It resolves
+# its user state relative to the folder it is started from, so `devenv` run
+# inside the repo leaves an empty `Visual Studio 2013/Backup Files/<solution>/`
+# directory per solution it opened, plus a copy of its ItemTemplates and
+# ProjectTemplates under `Visual Studio 2013Templates/`. Neither is source, both
+# are written as root (deleting them needs sudo), and a measuring run creates
+# them without asking -- see docs/MAINTAINING.md "Troubleshooting".
+Visual Studio 2013*/
+
 # Agent tooling. The skills themselves ARE committed under .agents/skills/,
 # with skills-lock.json pinning source and hash so `npx skills experimental_install`
 # can restore them. What is not source: .claude/skills/, a directory of relative

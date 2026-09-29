@@ -136,7 +136,10 @@ node tools/check-polyfill.mjs
 # members, project/disk drift, namespace mismatch (including NESTED Namespace
 # blocks, which compose), resw key drift, unwired XAML handlers,
 # {ThemeResource} keys the platform does not define, project flavour GUIDs that
-# disagree with the target platform, (group 13) a plain ' comment stranded inside
+# disagree with the target platform and the project type GUID of every
+# BrowserForWP.sln entry (group 14: the .vbproj carries the flavour, the .sln
+# carries the factory, and the flavour property's name may not appear ahead of
+# its element anywhere in a .vbproj), (group 13) a plain ' comment stranded inside
 # a ''' doc block plus every doc-comment tag that is unknown, mis-nested or left
 # unclosed, (group 15) any use of Reflection.Emit, process creation, LoadLibrary
 # or RWX-memory allocation plus any manifest capability that asks for privilege
@@ -163,7 +166,22 @@ bash tools/wp81-theme-keys.sh
 
 # Regenerate every WP8.1 image asset from the renderer.
 python3 tools/make_logo.py
+
+# The only oracle for the IDE's project system, and the only command here that
+# can see the two things MSBuild is blind to: the project type GUIDs in
+# BrowserForWP.sln and the flavour property's name appearing ahead of its
+# element in a .vbproj (the factory locates that property by scanning the file
+# as TEXT). Must print "Build: 7 succeeded, 0 failed", with only WMC9999 and no
+# "not installed" line. A solution with the flavour GUID there instead loads
+# NOTHING -- "Build: 0 succeeded or up-to-date, 0 failed, 0 skipped".
+prlctl exec "{66a2f493-162c-4b3f-ba40-0a26020cc818}" cmd /c \
+    "cd /d C:\Mac\Home\Documents\BrowserForWP && ""C:\Program Files (x86)\Microsoft Visual Studio 12.0\Common7\IDE\devenv.com"" BrowserForWP.sln /build ""Debug|ARM"""
 ```
+
+`devenv` rewrites the projects it opens — a BOM, CRLF line endings and a
+`<Folder Include="My Project\" />` item appear in whichever `.vbproj` files it
+touched. Revert those with `git checkout --` before committing, or a run that
+meant only to change the solution will also rewrite four project files.
 
 Those vectors also produce `tests/BrowserForWP.Crypto.Tests/Vectors.generated.vb`.
 That file is **generated** — never edit it by hand; regenerate it with
@@ -1614,6 +1632,7 @@ capture end needs a sound card; see the notes in `Docker-BrowserForWP`).
 | Symptom | Likely cause |
 | --- | --- |
 | `PermissionError` from `make_logo.py` | The project tree is owned by another user: `sudo chown -R "$(whoami)" BrowserForWP BrowserForWP.sln` |
+| `git status` is clean but the tree is full, or a build output cannot be deleted | The guest writes through the shared folder **as root**, so `bin/`, `obj/`, `AppPackages/`, `BundleArtifacts/` and everything `devenv` leaves behind are root-owned and only `sudo` can remove them. None of it is source and no tracked file is root-owned. One line, from the repository root: `sudo rm -rf "Visual Studio 2013" "Visual Studio 2013Templates" BrowserForWP/AppPackages BrowserForWP/BundleArtifacts */bin */obj tests/*/bin tests/*/obj BrowserForWP/*.vbproj.user` — the two `Visual Studio 2013…` directories are what a `devenv` run leaves at the repository root (one empty `Backup Files/<solution>/` per solution opened, plus a copy of the IDE's templates), they are ignored by `.gitignore` and they reappear on the next measuring run. `sudo chown -R "$(whoami)" .` also works and saves the sudo on future deletions, but the next guest build re-creates root files. |
 | `gen-vectors.mjs` exits 1 | An algorithm and an RFC constant disagree. The failing line prints both values — fix the algorithm, not the constant. |
 | TLS handshake fails on every site | Check the `supported_versions` and `key_share` extensions in `ClientHelloBuilder`; a malformed extension makes servers close the connection immediately. |
 | Site fails only on the handset | Run the compatibility probe. It is almost always a missing script feature, not a transport problem. |
