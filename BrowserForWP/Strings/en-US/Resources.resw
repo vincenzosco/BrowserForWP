@@ -294,6 +294,9 @@
   <data name="EngineReasonRemoteUnreachable" xml:space="preserve">
     <value>Neither server answered.</value>
   </data>
+  <data name="EngineReasonReportFailed" xml:space="preserve">
+    <value>This screen could not apply what the engine reported.</value>
+  </data>
   <data name="EngineReasonAutoNoMeasurement" xml:space="preserve">
     <value>Automatic: no page has been measured yet, so the system engine is used.</value>
   </data>

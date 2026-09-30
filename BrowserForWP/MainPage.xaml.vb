@@ -1580,11 +1580,41 @@ Public NotInheritable Class MainPage
     End Sub
 
     ''' <summary>
+    ''' The engine's report, GUARDED. This method is the last link of the remote
+    ''' engine's reporting chain: the read loop raises it, and the loop's own guard
+    ''' around its callback cannot report anything beyond asking again -- see the
+    ''' catch at the end of RemoteChannel.ReadLoopAsync. So the place that CAN say
+    ''' something is here, on the UI thread (the loop was started from this thread and
+    ''' its continuations come back here) and in front of the screen this shell owns.
+    '''
+    ''' The body moved to ApplyRemoteNavigation so this guard costs nine lines instead
+    ''' of re-indenting eighty: a report that can vanish is the defect, and a diff
+    ''' that cannot be read is how the next one gets in.
+    ''' </summary>
+    Private Sub OnRemoteNavigated(sender As Object, e As BrowserForWP.Engine.RemoteNavigationResult)
+        Try
+            ApplyRemoteNavigation(e)
+        Catch ex As Exception
+            ' Shown as an error rather than swallowed, with the exception's own type
+            ' and message -- the same shape the token page's failures are reported
+            ' with, and for the same reason: this phone has no logger, and a sentence
+            ' nobody can read is not a report. ErrorText is already the surface for
+            ' "the page did not arrive".
+            StatusText.Text = String.Empty
+            ErrorText.Text = Localizer.Get("EngineReasonReportFailed") & " " &
+                             ex.GetType().Name & ": " & ex.Message
+            ErrorText.Visibility = Visibility.Visible
+            RefreshTabsList()
+        End Try
+    End Sub
+
+    ''' <summary>
     ''' A render by the remote engine ended. It reports the same states the WebView's
     ''' completion handler reports, through the same helpers, so a page drawn by a
     ''' server leaves the shell exactly where the rest of the app expects it to be.
+    ''' Runs on the UI thread, under OnRemoteNavigated's guard.
     ''' </summary>
-    Private Sub OnRemoteNavigated(sender As Object, e As BrowserForWP.Engine.RemoteNavigationResult)
+    Private Sub ApplyRemoteNavigation(e As BrowserForWP.Engine.RemoteNavigationResult)
         If e Is Nothing Then Return
 
         LoadProgress.Value = If(e.IsSuccess, 100, 0)

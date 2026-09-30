@@ -33,7 +33,7 @@
 //   10. Char-range literals    ChrW cannot express a supplementary-plane code point
 //   11. VB 12 syntax           no leading-dot line continuation (VS2015 and later)
 //   12. Profile hazards        APIs absent from .NET for Windows Store apps
-//   13. Comment hazards        '--' in XML comments, unescaped '<' in doc comments
+//   13. Comment hazards        '--' in XML comments, unescaped '<' or '&' in doc comments
 //   14. Project flavour        the flavour GUID the IDE uses to resolve references
 //   15. Privileged access      JIT, process creation, full-trust capabilities
 //   16. Capability requirements  the code needs a capability the manifest lacks
@@ -1097,7 +1097,7 @@ function checkProfileHazards() {
 }
 
 // ── 13. Comment hazards ──────────────────────────────────────────────────
-// Three ways a comment can break a build.
+// Four ways a comment can break a build.
 //
 //  * '--' is illegal inside an XML comment. The project file then fails to
 //    load at all (MSB4025), and in a solution build the symptom is the far less
@@ -1107,6 +1107,13 @@ function checkProfileHazards() {
 //  * An XML doc comment is parsed as XML. `<0..2^24-1>`, copied straight from
 //    an RFC's grammar, is an invalid tag name and the whole doc comment is
 //    discarded with a warning (BC42304). Escape it as &lt;...&gt;.
+//
+//  * A bare '&' in a doc comment. Same cause, another door: an XML parser reads
+//    '&' as the start of an entity and wants a ';', so a comment that mentions a
+//    VB hex literal -- `&H10`, the sealed-type threshold -- is BC42304 ("expected
+//    semicolon") and the comment is discarded. Measured by the guest build in
+//    Round 22, on an `&H10` written into the summary of IsServerMessage. Escape
+//    it as &amp;, or spell the threshold in decimal.
 //
 //  * A PLAIN APOSTROPHE COMMENT INSIDE A ''' DOC BLOCK. A doc comment is a run
 //    of `'''` lines; a line starting with a single `'` ends the block, so the
@@ -1242,6 +1249,22 @@ function checkCommentHazards() {
             stack.push(name);
           }
         }
+
+        // A bare '&' is the other way into BC42304 (see the header). Every '&' in
+        // a doc comment must begin one of the five XML entities or a numeric
+        // reference; anything else -- `&H10`, `A&B` -- makes the parser want a ';'
+        // and the whole comment is discarded.
+        for (let at = body.indexOf('&'); at !== -1; at = body.indexOf('&', at + 1)) {
+          if (/^&(amp|lt|gt|quot|apos|#\d+|#x[0-9A-Fa-f]+);/.test(body.slice(at))) continue;
+          fail('comment', src,
+            'a doc comment is parsed as XML, and this "&" does not begin an ' +
+            'entity (`&amp;`, `&lt;`, `&gt;`, `&quot;`, `&apos;` or `&#...;`). A ' +
+            'bare one makes the parser want a ";" and the whole comment is ' +
+            'discarded with BC42304 -- a VB hex literal like &H10 is the case that ' +
+            'was measured.',
+            idx + 1);
+          anyBad = true;
+        }
       });
       flush();
     }
@@ -1285,8 +1308,8 @@ function checkCommentHazards() {
   }
 
   if (!anyBad) {
-    ok('no "--" in XML comments, no unmatched or unknown tag in a doc comment, ' +
-      "no plain comment inside a ''' block");
+    ok('no "--" in XML comments, no unmatched or unknown tag or bare "&" in a ' +
+      "doc comment, no plain comment inside a ''' block");
   }
 }
 

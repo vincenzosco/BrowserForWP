@@ -343,6 +343,18 @@ Namespace Engine
                         ' frame after the handshake, so reaching this arm is a bug in
                         ' that rule rather than a message to act on.
                         Return
+                    Case Else
+                        ' A SEALED TYPE WITH NO ARM. The read loop is expected to have
+                        ' refused this already (RemoteProtocol.IsServerMessage), which
+                        ' makes this arm the second line rather than the rule -- and it
+                        ' exists because the first version of this Select Case had no
+                        ' Else at all. An unknown type then simply fell out the bottom:
+                        ' the message was dropped, the screen did not change, and
+                        ' nothing anywhere said why. A rule that lives in one place is
+                        ' one edit away from being gone, so both places speak.
+                        RaiseEvent Navigated(Me, Failed("ErrorPageFailed",
+                            "message 0x" & messageType.ToString("X2") &
+                            " is not one this client understands", _currentUrl))
                 End Select
             Catch ex As Exception
                 ' A message this client cannot act on must not take the read loop

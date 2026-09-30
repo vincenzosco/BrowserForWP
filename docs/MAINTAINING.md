@@ -96,7 +96,8 @@ node tools/proto/remote-input.mjs --probe
 node tools/proto/engine-choice.mjs
 
 # The shell and delivery guards that arrived with the merged browser shell.
-node tools/proto/shell-guards.mjs    # picker/tab re-entrancy, completed URL, sln registration
+node tools/proto/shell-guards.mjs    # picker/tab re-entrancy, completed URL, sln registration,
+                                     # and the remote channel's callbacks (Round 22)
 node tools/proto/trackerblock.mjs    # host blocklist matching
 node tools/proto/pinstore.mjs        # pin normalisation and comparison
 node tools/proto/useragents.mjs      # UA table and search-URL escaping
@@ -2294,6 +2295,89 @@ Release/x86). **Not verified:** whether either guard is the defect the report ca
 from, and whether the awaited hop ever fails on a real phone, which needs the
 handset.
 
+### Round 22 -- a dropped server message is named, not swallowed
+
+**The ask:** give the remote engine's channel callbacks the treatment the token flow
+got in Round 21 -- surface a dropped message instead of swallowing it. That is a fix
+to the remote engine's *reporting chain*, not to its wire format.
+
+**What the code says, read line by line.** The chain had four places where a failure
+could disappear:
+
+1. `RemoteEngine.OnServerMessage`'s `Select Case` had no `Else`, so a message whose
+   type this build has no arm for fell out of the bottom of the handler in silence:
+   nothing was drawn, nothing was said, and the screen simply did not change.
+2. `RemoteChannel.ReadLoopAsync` refused a frame that violated the SEAL (`IsSealed`)
+   but not one whose TYPE this build cannot read -- it handed that to the engine,
+   which is where (1) then swallowed it.
+3. The `Catch` around `onClosed(reason)` in the read loop was empty. That callback is
+   the shell's own (`OnChannelClosed`) and it runs on the read loop's thread; if it
+   threw, the reason the channel ended was lost with it -- the same silence, one
+   layer down.
+4. `MainPage.OnRemoteNavigated` is subscribed when the remote engine is built, so it
+   runs on the UI thread, but its 80-line body was unguarded: an exception in it left
+   the handler, and the engine's report was never applied to the screen at all.
+
+**What changed.** The set of types a server may send is now a rule with a name,
+`RemoteProtocol.IsServerMessage`, and both sites ask it. The read loop refuses a
+sealed frame whose type it does not name, with the byte in the reason (`message 0xNN
+is not one this client understands`), and `OnServerMessage` grew a `Case Else` that
+raises the same sentence through `Navigated` as a failure. The rule is a LIST and not
+a range: the question is "does this BUILD know how to read what arrived", whose answer
+is the set of types `OnServerMessage` has an arm for, and a range (`>= &H20`) would
+silently accept the next type somebody adds -- and accepting by accident is the same
+silence as dropping by accident. The close callback is wrapped now: a throw from
+`onClosed` is kept in `_callbackFailure` and the callback is retried once with the
+exception's own message appended to the reason, so the reason the channel ended is
+still said. And `OnRemoteNavigated` is a guarded wrapper around the moved, otherwise
+unchanged `ApplyRemoteNavigation`; when it throws, the shell puts
+`EngineReasonReportFailed` together with `ex.GetType().Name & ": " & ex.Message` on
+the error strip and clears the status line. The catalogue gained
+`EngineReasonReportFailed` in both languages, 129 keys to 130.
+
+**Two things the guest build knew and the static checks did not -- again.** The first
+is the familiar family: `IsServerMessage` was written as a member of the nested
+`RemoteMessageType` class, and the guest refused the call as `BC30456`,
+"`IsServerMessage` is not a member of `RemoteProtocol`". No node referee reads the
+class hierarchy, so the compiler was the only oracle for that, exactly as in Round 21.
+The second was new: **a bare `&` in a `'''` doc comment.** Writing `&H10` into the
+summary -- the name of the sealed-type threshold -- produced `warning BC42304`,
+"expected semicolon". A doc comment is parsed as XML, so `&` opens an entity and the
+parser wants its `;`; the whole comment is then discarded. Group 13 already refuses
+`--` in an XML comment, an unescaped `<`, an unmatched or unknown tag, and a plain `'`
+that splits a block, but not `&`. That gap is closed: the group now requires every `&`
+in a doc comment to begin one of the five entities or a numeric reference, and it was
+measured red against the exact defect (the `&H10` summary was planted and the group
+refused it) and green once it was escaped as `&amp;H10`, after which the sentence was
+removed.
+
+**Verified:** `remote-protocol.mjs` **101/101** -- the 100 wire checks plus the new
+accepted-type list, and the list check was measured red by dropping `Title` from it
+(100/101, `the VB names: Url, LoadState, Frame, FindResult, Audio, Pong, Focus`).
+`shell-guards.mjs` **0 failure(s)** with four new contracts -- the read loop refuses a
+non-server type and names the byte with `ToString("X2")`; the engine's `OnServerMessage`
+has an `Else` arm that raises `ErrorPageFailed` and names the byte instead of falling
+out of its `Select Case`; a close callback that threw is kept and carried; the shell
+guards the engine report -- and each was measured red against its own defect (the type
+test replaced by `If False Then`, the engine's `Case Else` renamed to an existing arm,
+the close `Catch ex As Exception` reduced to a bare `Catch`, and the report handler's
+`Catch ex As Exception` likewise). The engine arm is checked separately on purpose:
+deleting it alone leaves the read loop's guard standing, so nothing else in the suite
+would have noticed -- and the read loop is the one place a rule was left in this round
+while the handler it feeds kept a silent bottom. The parse that reads the `Case` list was itself
+wrong twice before it was right: a line-based first draft counted `messageType` from
+the `Select Case` line, and the corrected span still carried the `Case` keyword on its
+first label and the `Return True` after its last -- each was caught by re-running it
+and reading the number, which is why the message prints the names it actually found.
+`check-vb.mjs` **19 groups / 0 finding(s)** with the catalogue at **130 keys**, every
+other referee green, and the four client configurations `BUILD_EXIT=0` (Debug/ARM,
+Release/ARM, Debug/x86, Release/x86) with no `BC` diagnostic of any kind, warning or
+error -- the only output of any sort is the allowed `WMC9999` known-noise. **Not verified:** anything about the channel on a real phone. The
+channel needs a live handshake, and this host has no emulator and no phone, which is
+why `RemoteChannel.vb` is held by source contracts rather than by execution; the four
+new sentences are about what the code SAYS when a message is dropped, and no sentence
+here has been seen on a screen.
+
 ## The loop
 
 Every change follows five steps, in order. The canonical version lives in
@@ -2326,11 +2410,12 @@ What is and is not covered:
 | `tests/BrowserForWP.Core.Tests/CoreLogicTests.vb` | Address normalisation, tab state, session/UA, settings, history, favourites, pin normalisation, hostname wildcards, language matching. | **Compiled by the guest build; never executed.** |
 | `tools/proto/core-logic.mjs` | A transliteration of `CoreLogicTests.vb`. 72 assertions, exit 1 on failure. | `node`, on any machine. **This is what actually runs those assertions.** |
 | `tools/proto/remote-input.mjs` | The remote input path as source contracts: one hidden `TextBox` built once, the `SemaphoreSlim` gate over every write to the stream, the rotation that moves both viewports and sends `RESIZE`, the eight key names the keys bar offers, that every label has a key in both `.resw` files, and — since Round 14 — that **a tap is not a request to type** and that the soft keyboard is raised only by the page's own answer, which the engine must route to the screen. Eleven checks, plus `--probe`, which plants each defect (twelve mutations) and requires its check to refuse it. | `node`, on any machine. |
-| `tools/proto/remote-protocol.mjs` | The render protocol's wire format: header, every encoder and decoder, the frame splitter, and the AEAD seal both ways, checked byte-for-byte against `protocol/vectors.json` — which the SERVER's own code produced. The only statement of the protocol that neither implementation wrote. 100 checks, including both values of `FOCUS` and its refusal of a third. | `node`, on any machine. |
-| `BrowserForWP/Strings/**/Resources.resw`, and the map name in `BrowserForWP.Localization/Localizer.vb` | Two languages, one key set (**129 keys**, and every literal key the code asks for must be one of them -- the `Localizer keys` group, added in Round 20), AND the name of the resource map the code asks WinRT for — the question parity was not asking, and one whose wrong answer runs silently. Round 18. | `node tools/check-vb.mjs`, group 6. The map-name inference is justified by a measurement of the built `resources.pri`, recorded in Round 18, because the PRI itself is a per-platform build output and is not committed. |
+| `tools/proto/remote-protocol.mjs` | The render protocol's wire format: header, every encoder and decoder, the frame splitter, and the AEAD seal both ways, checked byte-for-byte against `protocol/vectors.json` — which the SERVER's own code produced. The only statement of the protocol that neither implementation wrote. 101 checks, including both values of `FOCUS` and its refusal of a third, and — since Round 22 — that `RemoteProtocol.IsServerMessage` names exactly the eight types a server may send and nothing else. That one is a list and not a range on purpose: the question is "does this build know how to read what arrived", and a range would accept the next type somebody adds. | `node`, on any machine. |
+| `BrowserForWP/Strings/**/Resources.resw`, and the map name in `BrowserForWP.Localization/Localizer.vb` | Two languages, one key set (**130 keys**, and every literal key the code asks for must be one of them -- the `Localizer keys` group, added in Round 20; Round 22's `EngineReasonReportFailed` took it from 129 to 130), AND the name of the resource map the code asks WinRT for — the question parity was not asking, and one whose wrong answer runs silently. Round 18. | `node tools/check-vb.mjs`, group 6. The map-name inference is justified by a measurement of the built `resources.pri`, recorded in Round 18, because the PRI itself is a per-platform build output and is not committed. |
 | `tools/proto/remote-servers.mjs` | `RemoteServers.vb`: url normalisation, the primary/secondary order, duplicate collapsing, and the source contract that Core holds resource keys and not prose. | `node`, on any machine. |
 | `tools/proto/engine-choice.mjs` | The `EngineChoice` decision table -- including that an explicit Server choice is never the device engine, and that `MayFallBackToDevice` is False for it -- plus the source contract around it: the constants by name, the readiness branch on the automatic path only, the shell's gate, and the reasons as resource keys rather than sentences. | `node`, on any machine. |
-| `tools/check-vb.mjs` | 19 categories / 19 check groups over every `.vb`, `.vbproj`, `.xaml` and `.resw`, including every `{ThemeResource}` key, every project's flavour GUID and the factory GUID and separators of every `BrowserForWP.sln` entry, doc-comment structure, every privileged API name and every manifest capability that would ask the platform for something it cannot grant, every API whose capability the manifest fails to declare, every declaration that names a VB keyword, and the two groups Round 20 added: every literal `Localizer.Get("...")` key exists in the `.resw` pair, and no local shadows a member of its own class (`Dim carry` inside `Carry` is the shape of that bug, and two files in the tree had one). Round 21 added a nineteenth: **every hop from a worker thread to the UI thread** (any `RunAsync` on something named `…Dispatcher`) must be `Await`ed, inside a `Try`, and inside a `Catch` that binds an exception and uses it -- an unawaited hop loses both failures it can have, an unguarded one hands them to a catch-all that cannot report them, and an empty or unbound `Catch` is the same silence with more punctuation. It found the two hops in `MainPage.xaml.vb` and passed them, and it fails when no hop is found at all rather than printing a green empty set. | `node`, on any machine. |
+| `tools/proto/shell-guards.mjs` | The shell's event-loop guards that arrived with the merged browser shell (picker/tab re-entrancy, the completed URL, `sln` registration) and — since Round 22 — the remote channel's reporting chain as source contracts: `RemoteChannel.ReadLoopAsync` refuses a sealed frame whose type is not one this client names, `RemoteEngine.OnServerMessage` has an `Else` arm instead of falling out the bottom, a close callback that threw is kept and carried rather than discarded, and `OnRemoteNavigated` applies the engine's report inside a guard that shows `EngineReasonReportFailed`. It slices one method body per contract, because `[\s\S]*?` will otherwise credit the next method's `Catch` to the one it started in (the Round 21 lesson). | `node`, on any machine. |
+| `tools/check-vb.mjs` | 19 categories / 19 check groups over every `.vb`, `.vbproj`, `.xaml` and `.resw`, including every `{ThemeResource}` key, every project's flavour GUID and the factory GUID and separators of every `BrowserForWP.sln` entry, doc-comment structure (group 13: a `--` in an XML comment, and in a `'''` block an unmatched or unknown tag, a bare `&` — a VB hex literal like `&H10` in prose is BC42304 — or a plain `'` line that splits the block), every privileged API name and every manifest capability that would ask the platform for something it cannot grant, every API whose capability the manifest fails to declare, every declaration that names a VB keyword, and the two groups Round 20 added: every literal `Localizer.Get("...")` key exists in the `.resw` pair, and no local shadows a member of its own class (`Dim carry` inside `Carry` is the shape of that bug, and two files in the tree had one). Round 21 added a nineteenth: **every hop from a worker thread to the UI thread** (any `RunAsync` on something named `…Dispatcher`) must be `Await`ed, inside a `Try`, and inside a `Catch` that binds an exception and uses it -- an unawaited hop loses both failures it can have, an unguarded one hands them to a catch-all that cannot report them, and an empty or unbound `Catch` is the same silence with more punctuation. It found the two hops in `MainPage.xaml.vb` and passed them, and it fails when no hop is found at all rather than printing a green empty set. | `node`, on any machine. |
 | `tools/proto/token-inbox.mjs` | `TokenInbox.vb` -- the rules behind the page the phone serves -- and the source contracts of the shell that serves it: form decoding including malformed escapes, which of the phone's own addresses is advertised, the token's shape, the slot names, every refusal of `Review` (code first, then token, then slot, then address), plus the shell's `no-store` and CSP headers, the five-failure stop, that the token is written once and masked, that the listener is activated AND subscribed inside the per-port guard, that the start/stop handler cannot end the process, and that the hop from the socket thread to the UI thread is awaited, guarded in the handler that runs after it, and kept for the refresh when the dispatcher refused the work. 91 checks. | `node`, on any machine. |
 | `tools/keyword-probe/`, `tools/keyword-probe.cmd` | One `Dim <word> As Integer` per candidate, compiled by the real vbc, so group 17's list is measured rather than quoted. Batched, with a per-batch sentinel, because vbc 12 stops after about a hundred errors **with no message** and the first single-file version read that truncation as "legal". | `bash`, with the guest reachable. |
 | `tools/wp81-theme-keys.sh` | Regenerates `tools/wp81-theme-keys.txt`, the 523 theme-resource keys Windows Phone 8.1 defines, read from the guest's design dictionaries. | `bash`, with the guest reachable. |

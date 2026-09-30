@@ -51,6 +51,36 @@ Namespace Engine
                 Return messageType >= SealedFrom
             End Function
 
+            ''' <summary>
+            ''' Whether the SERVER may send this type: the eight RemoteMessageType
+            ''' names for that direction, and nothing else.
+            '''
+            ''' WHY THIS IS A LIST AND NOT A RANGE. IsSealed can compare against a
+            ''' threshold, because sealing is a property of the LAYER: everything after
+            ''' the handshake is sealed, whoever wrote it. This is not that question. It
+            ''' is instead "does this build know how to read what arrived", whose answer
+            ''' is the list of types RemoteEngine.OnServerMessage has an arm for, so it
+            ''' is written as that list. A range would silently accept the next type
+            ''' somebody adds, and accepting by accident is the failure this function
+            ''' exists to prevent: a message this client cannot act on used to fall
+            ''' straight through that Select Case and be dropped with nothing said,
+            ''' which on a phone is a screen that will not change and no reason why.
+            '''
+            ''' The read loop refuses a sealed frame that fails this test, naming the
+            ''' byte, rather than ignoring it.
+            ''' </summary>
+            Public Shared Function IsServerMessage(messageType As Byte) As Boolean
+                Select Case messageType
+                    Case RemoteMessageType.Title, RemoteMessageType.Url,
+                         RemoteMessageType.LoadState, RemoteMessageType.Frame,
+                         RemoteMessageType.FindResult, RemoteMessageType.Audio,
+                         RemoteMessageType.Pong, RemoteMessageType.Focus
+                        Return True
+                    Case Else
+                        Return False
+                End Select
+            End Function
+
             ''' <summary>Builds the 16 header bytes. Big-endian, every field explicit.</summary>
             Public Shared Function EncodeHeader(messageType As Byte, sequence As UInteger, length As UInteger) As Byte()
                 Dim header(HeaderSize - 1) As Byte
@@ -436,6 +466,11 @@ Namespace Engine
             Public Const Audio As Byte = &H25
             Public Const Pong As Byte = &H26
             Public Const Focus As Byte = &H27
+
+            ' Whether this direction may carry a given type is a RULE about the
+            ' protocol, so it lives on RemoteProtocol beside IsSealed rather than here.
+            ' That is where the first version of it did not live, and the guest build
+            ' said so: BC30456, "IsServerMessage is not a member of RemoteProtocol".
 
             Private Sub New()
             End Sub

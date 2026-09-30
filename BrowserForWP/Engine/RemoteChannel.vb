@@ -59,6 +59,19 @@ Namespace Engine
         Private _readLoop As Task
         Private _closed As Boolean
         Private _closedOnPurpose As Boolean
+        Private _callbackFailure As String = String.Empty
+
+        ''' <summary>
+        ''' The last failure of a handler this channel was given, or empty. Kept rather
+        ''' than discarded because that handler is the LAST link of the report chain:
+        ''' see the catch at the end of ReadLoopAsync for why one retry is all this
+        ''' thread can offer and why this field exists at all.
+        ''' </summary>
+        Public ReadOnly Property CallbackFailure As String
+            Get
+                Return _callbackFailure
+            End Get
+        End Property
 
         Public ReadOnly Property IsOpen As Boolean
             Get
@@ -181,6 +194,20 @@ Namespace Engine
                         Exit Do
                     End If
 
+                    ' And a sealed frame this build has no arm for is refused HERE,
+                    ' naming the byte, rather than dropped. It used to fall through the
+                    ' handler's Select Case in silence: a message from a newer server,
+                    ' or a client's own type echoed back, left the screen exactly as it
+                    ' was and nothing said why. Refusing it is the same answer this
+                    ' loop already gives a plaintext frame -- a protocol this build
+                    ' cannot speak -- and it reaches a person, because the close path
+                    ' below is where reasons are reported.
+                    If Not RemoteProtocol.IsServerMessage(frame.Type) Then
+                        reason = "message 0x" & frame.Type.ToString("X2") &
+                                 " is not one this client understands"
+                        Exit Do
+                    End If
+
                     ' Something asked this connection to stop WHILE the read above was
                     ' waiting. Dispatching now would hand a replaced connection's
                     ' message to a handler that no longer belongs to it -- a frame
@@ -218,9 +245,21 @@ Namespace Engine
 
             Try
                 onClosed(reason)
-            Catch
-                ' A handler that throws must not take the loop's error reporting
-                ' with it; the loop is already over.
+            Catch ex As Exception
+                ' NOT discarded, which is what this empty Catch used to do. A second
+                ' call is only a partial answer and it is worth saying why: onClosed
+                ' IS the report path, so asking it again asks the handler that just
+                ' threw, and a read loop owns no screen. So the failure is kept on this
+                ' channel AND carried inside the reason for exactly ONE retry -- which
+                ' lands when the shell guards its own handler, as
+                ' MainPage.OnRemoteNavigated now does. A retry that fails too lands
+                ' nowhere, and this field is then the whole record of it.
+                _callbackFailure = ex.Message
+                Try
+                    onClosed(reason & " ... and the handler that reports it threw: " & ex.Message)
+                Catch again As Exception
+                    _callbackFailure = ex.Message & " then " & again.Message
+                End Try
             End Try
         End Function
 

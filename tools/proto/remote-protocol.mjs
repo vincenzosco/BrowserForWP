@@ -182,6 +182,38 @@ check('the VB FOCUS decoder refuses a value that is neither 0 nor 1',
   /If raw > 1 Then/.test(code),
   'truthiness would accept an extension nobody versioned, and raise a keyboard on a byte it does not understand');
 
+// ── The messages this build will ACCEPT ─────────────────────────────────────
+// A sealed frame whose type has no arm in the handler is a protocol this build
+// cannot speak, and the FIRST version of that handler dropped one in silence: its
+// Select Case had no Else, so an unknown type fell out the bottom, the screen did
+// not change, and nothing anywhere said why. Both places that can meet one now
+// speak -- the read loop refuses it with the byte in the reason, RemoteEngine's
+// Select Case has an Else -- and this check is about the LIST, because the list is
+// the rule. A range (>= &H20) would silently accept the next type somebody adds,
+// and accepting by accident is the same silence as dropping by accident.
+const SERVER_TYPES = ['Title', 'Url', 'LoadState', 'Frame', 'FindResult', 'Audio', 'Pong', 'Focus'];
+const isServerMessage = (code.match(/Public Shared Function IsServerMessage[\s\S]*?End Function/) || [''])[0];
+// The Case labels between `Select Case messageType` and `Case Else`, joined up:
+// the list spans several lines and every name is qualified (`RemoteMessageType.Title`),
+// because the constants live in a nested class. The first draft read only lines that
+// begin with `Case` and counted "messageType" from the Select line as a server type.
+// The span begins with the `Case` keyword and ends inside the arm body, so both ends
+// are cut away -- without that, the first label carried its `Case ` and the last one
+// carried the `Return True` after it.
+const caseBody = isServerMessage.length === 0 ? '' : isServerMessage.slice(
+  isServerMessage.indexOf('Case messageType') + 'Case messageType'.length,
+  isServerMessage.indexOf('Case Else'));
+const caseSpan = caseBody.replace(/^\s*Case\s+/, '').split(/\bReturn\b/)[0];
+const namedServerTypes = caseSpan
+  .split(',')
+  .map((name) => name.replace(/[\s\r\n]+/g, '').replace(/^RemoteMessageType\./, ''))
+  .filter((name) => /^[A-Za-z]\w*$/.test(name));
+check('the VB names exactly the eight types a server may send, and no others',
+  isServerMessage.length > 0
+  && namedServerTypes.length === SERVER_TYPES.length
+  && SERVER_TYPES.every((name) => namedServerTypes.includes(name)),
+  `the VB names: ${namedServerTypes.join(', ') || 'nothing'}`);
+
 // ── The source contract: the field order the VB must have ───────────────────
 // Each list is the order the VB encoder must walk, taken from the server's own
 // encoder. This is what catches a field added on one side only.
