@@ -57,6 +57,12 @@ Public NotInheritable Class MainPage
     ' than a closure because the shell has no lambdas: see TokenPage_Saved.
     Private _pendingVerdict As TokenVerdict
 
+    ' What this phone was told and could not store, with the sentence that says so.
+    ' Empty when nothing is owed to the screen. It exists because the hop to the UI
+    ' thread can fail in a way that makes the hop itself unable to report anything:
+    ' this is what the next RefreshTokenInboxUi reads. See KeepTokenInboxFailure.
+    Private _tokenInboxFailure As String = String.Empty
+
     ''' <summary>True while pickers/lists are repopulated, so programmatic selection is ignored.</summary>
     Private _populatingLanguage As Boolean = False
     Private _refreshingTabs As Boolean = False
@@ -1011,6 +1017,9 @@ Public NotInheritable Class MainPage
     ''' </summary>
     Private Async Sub TokenInboxToggleButton_Click(sender As Object, e As RoutedEventArgs)
         TokenInboxToggleButton.IsEnabled = False
+        ' A new press is a new statement about this phone, so what the last one still
+        ' owed the screen is settled here rather than carried into it.
+        _tokenInboxFailure = String.Empty
         Try
             If _tokenPage IsNot Nothing AndAlso _tokenPage.IsRunning Then
                 StopTokenInbox()
@@ -1077,6 +1086,17 @@ Public NotInheritable Class MainPage
             TokenInboxUrlText.Text = Localizer.Get("TokenInboxNotRunning")
             TokenInboxCodeText.Text = String.Empty
         End If
+
+        ' And LAST, anything this phone was told and could not store. It is shown here
+        ' because the one failure the reporting hop cannot carry is its own: a
+        ' dispatcher that refused the work is exactly the case with no UI thread to
+        ' write to, and this is the sentence that outlives it. Said ONCE -- the next
+        ' press starts a clean statement -- so an empty string is both the ordinary
+        ' case and the ordinary state.
+        If _tokenInboxFailure.Length > 0 Then
+            TokenInboxStatus.Text = _tokenInboxFailure
+            _tokenInboxFailure = String.Empty
+        End If
     End Sub
 
     ''' <summary>
@@ -1085,34 +1105,104 @@ Public NotInheritable Class MainPage
     ''' better and would also be the one thing in this file that no static check here
     ''' can follow, because the block counter reads a bare `Sub()` line as neither an
     ''' opener nor a closer.
+    '''
+    ''' AWAITED, and that is the fix rather than a style choice. The returned
+    ''' IAsyncAction is the only place the hop's own failure is visible, and a call
+    ''' with no awaiter leaves it there for nobody to read -- while
+    ''' OnConnectionReceived's own Catch eats whatever falls out of the socket handler,
+    ''' and the browser has already been told the token was saved. The handler's OWN
+    ''' failures are reported by the handler now (ApplyPendingVerdict and
+    ''' ReportTokenInboxStopped run ON the UI thread and can simply say so), which
+    ''' leaves this Catch exactly one case: a dispatcher that refused the work.
     ''' </summary>
-    Private Sub TokenPage_Saved(sender As Object, verdict As TokenVerdict)
+    Private Async Sub TokenPage_Saved(sender As Object, verdict As TokenVerdict)
         _pendingVerdict = verdict
         ' RunAsync, not BeginInvoke: the WinRT CoreDispatcher has RunAsync, and
         ' BeginInvoke is WPF's Dispatcher -- BC30456, "BeginInvoke is not a member of
         ' CoreDispatcher", found by the guest build. tools/check-vb.mjs knows the name
         ' now, so the next file that reaches for it is told before the build.
-        Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal,
-                            New Windows.UI.Core.DispatchedHandler(AddressOf ApplyPendingVerdict))
+        Try
+            Await Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal,
+                                      New Windows.UI.Core.DispatchedHandler(AddressOf ApplyPendingVerdict))
+        Catch ex As Exception
+            ' The verdict goes back OUT of the field it was parked in: a copy left
+            ' here would be applied by the next submission's hop, under a screen that
+            ' had long stopped talking about this one.
+            _pendingVerdict = Nothing
+            ' And this is the case a second hop cannot fix AND cannot be observed: a
+            ' dispatcher that refused this item will refuse the next one, and VB does
+            ' not allow Await inside a Catch block, so a retry written here would be
+            ' one more unobserved call -- the defect this round exists to remove. The
+            ' sentence is KEPT instead.
+            KeepTokenInboxFailure(ex)
+        End Try
     End Sub
 
     ''' <summary>The listener closed itself, and the reason is the code count.</summary>
-    Private Sub TokenPage_Stopped(sender As Object, e As EventArgs)
-        Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal,
-                            New Windows.UI.Core.DispatchedHandler(AddressOf ReportTokenInboxStopped))
+    Private Async Sub TokenPage_Stopped(sender As Object, e As EventArgs)
+        Try
+            Await Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal,
+                                      New Windows.UI.Core.DispatchedHandler(AddressOf ReportTokenInboxStopped))
+        Catch ex As Exception
+            ' The one sentence this event exists to deliver -- five wrong codes -- is
+            ' worth exactly as much as the token in the other handler.
+            KeepTokenInboxFailure(ex)
+        End Try
     End Sub
+
+    ''' <summary>
+    ''' Something the token page accepted did not reach the screen. Called ON the UI
+    ''' thread, by the handler that was supposed to show it, so the sentence goes
+    ''' straight onto the status line: no hop, and nothing left that can fail.
+    ''' </summary>
+    Private Sub ShowTokenInboxFailure(ex As Exception)
+        TokenInboxStatus.Text = TokenInboxFailureSentence(ex)
+    End Sub
+
+    ''' <summary>
+    ''' The hop to the UI thread never ran, so from this thread there is nothing to
+    ''' write to and no second hop that would be observable (Await is not allowed in a
+    ''' Catch). The sentence is KEPT, and RefreshTokenInboxUi shows it at the next look
+    ''' at this screen -- the only report a dispatcher that refuses work leaves room
+    ''' for.
+    ''' </summary>
+    Private Sub KeepTokenInboxFailure(ex As Exception)
+        _tokenInboxFailure = TokenInboxFailureSentence(ex)
+    End Sub
+
+    ''' <summary>
+    ''' What a lost token is reported with: the catalogue's sentence about a token that
+    ''' arrived and was not stored, and then the framework's own sentence about why --
+    ''' which is the only stack trace this feature can produce on a phone.
+    ''' </summary>
+    Private Shared Function TokenInboxFailureSentence(ex As Exception) As String
+        If ex Is Nothing Then Return Localizer.Get("TokenInboxNotApplied")
+        Return Localizer.Get("TokenInboxNotApplied") & " " & ex.GetType().Name & ": " & ex.Message
+    End Function
 
     ''' <summary>Runs on the UI thread. See TokenPage_Saved.</summary>
     Private Sub ApplyPendingVerdict()
         Dim verdict As TokenVerdict = _pendingVerdict
         _pendingVerdict = Nothing
-        ApplyTokenVerdict(verdict)
+        Try
+            ApplyTokenVerdict(verdict)
+        Catch ex As Exception
+            ' A verdict the rules accepted and this phone could not store is the
+            ' failure this feature used to lose in silence: the page was told the
+            ' token was saved, the token was not, and nothing said so. Reported HERE,
+            ' on the thread that owns the screen, so it needs no hop to be seen.
+            ShowTokenInboxFailure(ex)
+        End Try
     End Sub
 
     ''' <summary>Runs on the UI thread. See TokenPage_Stopped.</summary>
     Private Sub ReportTokenInboxStopped()
-        TokenInboxStatus.Text = Localizer.Get("TokenInboxStoppedFailures")
-        RefreshTokenInboxUi()
+        Try
+            TokenInboxStatus.Text = Localizer.Get("TokenInboxStoppedFailures")
+            RefreshTokenInboxUi()
+        Catch ex As Exception
+            ShowTokenInboxFailure(ex)
+        End Try
     End Sub
 
     ''' <summary>

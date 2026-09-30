@@ -2230,6 +2230,32 @@ swallow -- a settings toggle that can end a browser is a worse defect than a
 listener that will not start, and the framework's own sentence about why is worth
 more than this file's guess at one.
 
+**And the other half of the same silence: the hop to the UI thread.** A verdict
+arrives on a socket thread and has to cross to the UI thread to be applied, and the
+two `Dispatcher.RunAsync` calls in the token flow were fire-and-forget. That loses
+BOTH failures the hop can have -- `RunAsync` refusing to schedule, and the handler
+it scheduled throwing (`ApplyPendingVerdict` saves the settings, moves the picker
+and navigates) -- inside `OnConnectionReceived`'s own `Catch`, while the browser has
+already been told the token was saved. Both handlers are `Await`ed now, which puts
+those failures back on the socket thread where they can be said out loud, and it
+splits the reporting in two, because the two failures have different answers. A
+handler that THROWS reports itself: `ApplyPendingVerdict` and
+`ReportTokenInboxStopped` guard their own bodies and write the sentence through
+`ShowTokenInboxFailure`, on the UI thread they already own, so no hop is needed. A
+dispatcher that REFUSES the work cannot be answered by a second hop -- it would
+refuse that one too, and VB does not allow `Await` inside a `Catch`, so a retry
+could not be observed either -- so those two Catches call
+`KeepTokenInboxFailure`, and `RefreshTokenInboxUi` shows the kept sentence at the
+next look at the screen. The catalogue gained `TokenInboxNotApplied`.
+
+**A referee that could not see its own subject, found by mutating it.** The first
+version of the "handler reports its own failure" check was
+`Private Sub ApplyPendingVerdict[\s\S]*?Catch[\s\S]*?ShowTokenInboxFailure` -- and
+deleting ApplyPendingVerdict's own guard left it GREEN, because `[\s\S]*?` matches a
+`Catch` and a call belonging to the method AFTER it and credits them to the method
+it started in. The three checks now slice ONE method body each, from its signature to
+the next `End Sub`, and each was re-measured red against its own defect.
+
 **What is NOT known, and is written down rather than implied.** The root cause has
 not been seen from here: there is no emulator on this host (see "Emulators do not
 work here"), the handset is the owner's, and a first-chance line names an exception
@@ -2240,10 +2266,15 @@ stack this feature can produce on that device. Do not describe this round as "th
 crash was fixed"; describe it as "the path can no longer end the process, and it
 now reports what it could not do."
 
-**Verified:** `token-inbox.mjs` **86/86**, every other referee green,
-`check-vb.mjs` **18 groups / 0 finding(s)**, and the four client configurations
-`BUILD_EXIT=0` (Debug/ARM, Release/ARM, Debug/x86, Release/x86). **Not verified:**
-whether either guard is the defect the report came from, which needs the handset.
+**Verified:** `token-inbox.mjs` **91/91** -- five new source contracts over the 86
+that were there (two for the guards, three for the hop), and each new one was
+watched going red against a planted defect before it was trusted -- every other
+referee green,
+`check-vb.mjs` **18 groups / 0 finding(s)** with the catalogue at **129 keys**, and
+the four client configurations `BUILD_EXIT=0` (Debug/ARM, Release/ARM, Debug/x86,
+Release/x86). **Not verified:** whether either guard is the defect the report came
+from, and whether the awaited hop ever fails on a real phone, which needs the
+handset.
 
 ## The loop
 
@@ -2278,11 +2309,11 @@ What is and is not covered:
 | `tools/proto/core-logic.mjs` | A transliteration of `CoreLogicTests.vb`. 72 assertions, exit 1 on failure. | `node`, on any machine. **This is what actually runs those assertions.** |
 | `tools/proto/remote-input.mjs` | The remote input path as source contracts: one hidden `TextBox` built once, the `SemaphoreSlim` gate over every write to the stream, the rotation that moves both viewports and sends `RESIZE`, the eight key names the keys bar offers, that every label has a key in both `.resw` files, and — since Round 14 — that **a tap is not a request to type** and that the soft keyboard is raised only by the page's own answer, which the engine must route to the screen. Eleven checks, plus `--probe`, which plants each defect (twelve mutations) and requires its check to refuse it. | `node`, on any machine. |
 | `tools/proto/remote-protocol.mjs` | The render protocol's wire format: header, every encoder and decoder, the frame splitter, and the AEAD seal both ways, checked byte-for-byte against `protocol/vectors.json` — which the SERVER's own code produced. The only statement of the protocol that neither implementation wrote. 100 checks, including both values of `FOCUS` and its refusal of a third. | `node`, on any machine. |
-| `BrowserForWP/Strings/**/Resources.resw`, and the map name in `BrowserForWP.Localization/Localizer.vb` | Two languages, one key set (**128 keys**, and every literal key the code asks for must be one of them -- the `Localizer keys` group, added in Round 20), AND the name of the resource map the code asks WinRT for — the question parity was not asking, and one whose wrong answer runs silently. Round 18. | `node tools/check-vb.mjs`, group 6. The map-name inference is justified by a measurement of the built `resources.pri`, recorded in Round 18, because the PRI itself is a per-platform build output and is not committed. |
+| `BrowserForWP/Strings/**/Resources.resw`, and the map name in `BrowserForWP.Localization/Localizer.vb` | Two languages, one key set (**129 keys**, and every literal key the code asks for must be one of them -- the `Localizer keys` group, added in Round 20), AND the name of the resource map the code asks WinRT for — the question parity was not asking, and one whose wrong answer runs silently. Round 18. | `node tools/check-vb.mjs`, group 6. The map-name inference is justified by a measurement of the built `resources.pri`, recorded in Round 18, because the PRI itself is a per-platform build output and is not committed. |
 | `tools/proto/remote-servers.mjs` | `RemoteServers.vb`: url normalisation, the primary/secondary order, duplicate collapsing, and the source contract that Core holds resource keys and not prose. | `node`, on any machine. |
 | `tools/proto/engine-choice.mjs` | The `EngineChoice` decision table -- including that an explicit Server choice is never the device engine, and that `MayFallBackToDevice` is False for it -- plus the source contract around it: the constants by name, the readiness branch on the automatic path only, the shell's gate, and the reasons as resource keys rather than sentences. | `node`, on any machine. |
 | `tools/check-vb.mjs` | 18 categories / 18 check groups over every `.vb`, `.vbproj`, `.xaml` and `.resw`, including every `{ThemeResource}` key, every project's flavour GUID and the factory GUID and separators of every `BrowserForWP.sln` entry, doc-comment structure, every privileged API name and every manifest capability that would ask the platform for something it cannot grant, every API whose capability the manifest fails to declare, every declaration that names a VB keyword, and the two groups Round 20 added: every literal `Localizer.Get("...")` key exists in the `.resw` pair, and no local shadows a member of its own class (`Dim carry` inside `Carry` is the shape of that bug, and two files in the tree had one). | `node`, on any machine. |
-| `tools/proto/token-inbox.mjs` | `TokenInbox.vb` -- the rules behind the page the phone serves -- and the source contracts of the shell that serves it: form decoding including malformed escapes, which of the phone's own addresses is advertised, the token's shape, the slot names, every refusal of `Review` (code first, then token, then slot, then address), plus the shell's `no-store` and CSP headers, the five-failure stop, and that the token is written once and masked. 86 checks. | `node`, on any machine. |
+| `tools/proto/token-inbox.mjs` | `TokenInbox.vb` -- the rules behind the page the phone serves -- and the source contracts of the shell that serves it: form decoding including malformed escapes, which of the phone's own addresses is advertised, the token's shape, the slot names, every refusal of `Review` (code first, then token, then slot, then address), plus the shell's `no-store` and CSP headers, the five-failure stop, that the token is written once and masked, that the listener is activated AND subscribed inside the per-port guard, that the start/stop handler cannot end the process, and that the hop from the socket thread to the UI thread is awaited, guarded in the handler that runs after it, and kept for the refresh when the dispatcher refused the work. 91 checks. | `node`, on any machine. |
 | `tools/keyword-probe/`, `tools/keyword-probe.cmd` | One `Dim <word> As Integer` per candidate, compiled by the real vbc, so group 17's list is measured rather than quoted. Batched, with a per-batch sentinel, because vbc 12 stops after about a hundred errors **with no message** and the first single-file version read that truncation as "legal". | `bash`, with the guest reachable. |
 | `tools/wp81-theme-keys.sh` | Regenerates `tools/wp81-theme-keys.txt`, the 523 theme-resource keys Windows Phone 8.1 defines, read from the guest's design dictionaries. | `bash`, with the guest reachable. |
 | `tools/vm-build.cmd` | The real compiler, and the arbiter of pass/fail. | The Windows guest. |

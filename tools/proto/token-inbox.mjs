@@ -483,6 +483,47 @@ check('the start/stop handler cannot end the process, and says what it could not
   /Private Async Sub TokenInboxToggleButton_Click[\s\S]*?Catch ex As Exception[\s\S]*?ex\.GetType\(\)\.Name/.test(mainSource)
   && /TokenInboxStatus\.Text = ex\.GetType\(\)\.Name/.test(mainSource),
   'a settings toggle that can close a browser is a worse defect than a listener that will not start');
+
+// The hop from the socket thread to the UI thread. A verdict that arrives on
+// ConnectionReceived has to cross threads to be applied, and a call with no
+// awaiter loses BOTH failures -- RunAsync refusing to schedule, and the handler it
+// scheduled throwing -- inside OnConnectionReceived's own Catch, after the browser
+// has been told the token was saved. Awaiting the IAsyncAction is what puts those
+// two back where they can be reported, and the report has to survive a dispatcher
+// that will not take a second item, which is why it is latched as well.
+// One method's own text, from its signature to the first `End Sub` indented like it.
+// Three checks below are about what ONE method does, and a `[\s\S]*?` that runs to
+// the end of the file happily matches a Catch or a call belonging to the method
+// AFTER it -- measured here: with ApplyPendingVerdict's own guard deleted, the first
+// version of the check below stayed green, naming the wrong method as the proof.
+function subBody(signature) {
+  const at = mainSource.indexOf(signature);
+  if (at < 0) return '';
+  const end = mainSource.indexOf('\n    End Sub', at);
+  return end < 0 ? '' : mainSource.slice(at, end);
+}
+
+const savedBody = subBody('Private Async Sub TokenPage_Saved(');
+const stoppedBody = subBody('Private Async Sub TokenPage_Stopped(');
+const applyBody = subBody('Private Sub ApplyPendingVerdict()');
+const reportBody = subBody('Private Sub ReportTokenInboxStopped()');
+const refreshBody = subBody('Private Sub RefreshTokenInboxUi()');
+check('the hop to the UI thread is awaited, so its failure is not left in an IAsyncAction nobody reads',
+  /Await Dispatcher\.RunAsync/.test(savedBody) && /Catch ex As Exception/.test(savedBody)
+  && /Await Dispatcher\.RunAsync/.test(stoppedBody) && /Catch ex As Exception/.test(stoppedBody),
+  'a fire-and-forget RunAsync cannot be observed: the failure ends in the socket handler\'s Catch');
+check('the handler reports its own failure, on the thread that owns the screen',
+  /Catch ex As Exception/.test(applyBody) && /ShowTokenInboxFailure\(ex\)/.test(applyBody)
+  && /Catch ex As Exception/.test(reportBody) && /ShowTokenInboxFailure\(ex\)/.test(reportBody)
+  && /Private Sub ShowTokenInboxFailure\(ex As Exception\)/.test(mainSource),
+  'the handler that runs after the hop is the only one that can still say what went wrong, and it is already on the UI thread');
+check('a verdict the hop never delivered is kept for a refresh that can run',
+  /Private Sub KeepTokenInboxFailure\(ex As Exception\)/.test(mainSource)
+  && /Localizer\.Get\("TokenInboxNotApplied"\)/.test(mainSource)
+  && /_tokenInboxFailure = TokenInboxFailureSentence\(ex\)/.test(mainSource)
+  && /_tokenInboxFailure\.Length > 0/.test(refreshBody)
+  && /_tokenInboxFailure = String\.Empty/.test(refreshBody),
+  'a dispatcher that refuses the work is the one failure no second hop can carry, so the sentence has to outlive it');
 check('a saved token switches the engine to the server and stores the address',
   /_appSettings\.EngineSetting = EngineChoice\.Remote/.test(mainSource)
   && /_appSettings\.RemoteEnabled = True/.test(mainSource)

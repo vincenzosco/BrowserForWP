@@ -422,6 +422,9 @@
   <data name="TokenInboxStoppedFailures" xml:space="preserve">
     <value>Codice sbagliato cinque volte: la pagina si è chiusa. Riapri il modulo per riprovare.</value>
   </data>
+  <data name="TokenInboxNotApplied" xml:space="preserve">
+    <value>Ricevuto, ma il telefono non è riuscito a salvarlo: il token non è stato applicato.</value>
+  </data>
   <data name="TokenInboxNoAddress" xml:space="preserve">
     <value>Questo telefono non ha un indirizzo di rete raggiungibile: collega il Wi-Fi e riprova.</value>
   </data>

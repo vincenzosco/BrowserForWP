@@ -422,6 +422,9 @@
   <data name="TokenInboxStoppedFailures" xml:space="preserve">
     <value>Five wrong codes: the page closed itself. Open it again to try once more.</value>
   </data>
+  <data name="TokenInboxNotApplied" xml:space="preserve">
+    <value>Received, but this phone could not store it: the token was not applied.</value>
+  </data>
   <data name="TokenInboxNoAddress" xml:space="preserve">
     <value>This phone has no reachable network address: connect the Wi-Fi and try again.</value>
   </data>
