@@ -1026,6 +1026,23 @@ Public NotInheritable Class MainPage
                 TokenInboxStatus.Text = Localizer.Get(statusKey)
             End If
             RefreshTokenInboxUi()
+        Catch ex As Exception
+            ' A SETTINGS TOGGLE MUST NOT BE ABLE TO CLOSE THE BROWSER, and until this
+            ' Catch existed this one could. It is an Async Sub: an exception here is
+            ' rethrown on the UI thread with nothing above it to catch, so the
+            ' process ends -- which is what tapping the button did, with a
+            ' first-chance InvalidOperationException out of mscorlib.ni.dll and no
+            ' frame of a stack to read it from (there is no emulator on this host,
+            ' and the phone is the owner's).
+            '
+            ' What is NOT done here is swallowing it silently: the listener is
+            ' closed, and the exception's own type and message are put on the screen
+            ' where the address and the code would have been. A listener that failed
+            ' to start is a state somebody has to be told about, and the framework's
+            ' sentence about WHY is worth more than this file's guess at one -- it is
+            ' the only stack trace this feature can produce on a handset.
+            StopTokenInbox()
+            TokenInboxStatus.Text = ex.GetType().Name & ": " & ex.Message
         Finally
             TokenInboxToggleButton.IsEnabled = True
         End Try

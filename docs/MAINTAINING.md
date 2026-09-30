@@ -2200,6 +2200,51 @@ address and the code as they appear on the screen, the form in a computer's brow
 and the engine switching to *Server* after a paste. That is row 11 of the table
 below, and it is blank like the rest.
 
+### Round 21 -- the token button closed the browser, and the path is now guarded
+
+**The report:** tapping the button that starts the token page ends the app, with
+`A first chance exception of type 'System.InvalidOperationException' occurred in
+mscorlib.ni.dll`. No stack: the first-chance line is what the debugger prints for
+exceptions the code CATCHES as well, and the phone's Output window carried only
+that line, twice.
+
+**What the code says, read line by line.** Every call under that button is already
+inside a guard except two, and they are the reason this round exists:
+`Dim listener As New StreamSocketListener()` sat OUTSIDE `StartAsync`'s per-port
+`Try`, and `AddHandler listener.ConnectionReceived` sat outside it too -- the two
+WinRT calls that make a listener usable, in the one method whose caller is an
+`Async Sub` with a `Try` but no `Catch`. An exception from either therefore leaves
+`StartAsync`, leaves the click handler, and is rethrown on the UI thread where
+nothing catches it. That is the shape of a process ending, and it is the shape the
+report describes. `NewCode()`'s `CryptographicBuffer` pair was checked against the
+platform documentation rather than guessed at, and is correct: `CopyToByteArray`
+is `ByRef value As Byte()`, `Nothing` is the documented input, and the same call is
+already the whole of `WinRtCrypto.ToArray`.
+
+**What changed.** Both calls moved inside the per-port guard, so a listener that
+cannot exist and a listener that cannot be subscribed to are the same answer as a
+port that is taken: try the next one, and say `TokenInboxNoPort` when there is none.
+And `TokenInboxToggleButton_Click` grew a `Catch`: it closes the listener and puts
+`ex.GetType().Name & ": " & ex.Message` on the status line. That is not a silent
+swallow -- a settings toggle that can end a browser is a worse defect than a
+listener that will not start, and the framework's own sentence about why is worth
+more than this file's guess at one.
+
+**What is NOT known, and is written down rather than implied.** The root cause has
+not been seen from here: there is no emulator on this host (see "Emulators do not
+work here"), the handset is the owner's, and a first-chance line names an exception
+module and not a frame. So this round ships a fix for the two real holes and a
+reading off the phone in exchange: the next tap either starts the page, or prints
+the exception's own type and message on the Settings screen, which is the only
+stack this feature can produce on that device. Do not describe this round as "the
+crash was fixed"; describe it as "the path can no longer end the process, and it
+now reports what it could not do."
+
+**Verified:** `token-inbox.mjs` **86/86**, every other referee green,
+`check-vb.mjs` **18 groups / 0 finding(s)**, and the four client configurations
+`BUILD_EXIT=0` (Debug/ARM, Release/ARM, Debug/x86, Release/x86). **Not verified:**
+whether either guard is the defect the report came from, which needs the handset.
+
 ## The loop
 
 Every change follows five steps, in order. The canonical version lives in

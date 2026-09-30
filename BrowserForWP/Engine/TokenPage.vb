@@ -120,20 +120,34 @@ Namespace Engine
 
             For offset As Integer = 0 To TokenInbox.PortsToTry - 1
                 Dim candidate As Integer = TokenInbox.DefaultPort + offset
-                Dim listener As New StreamSocketListener()
+                Dim listener As StreamSocketListener = Nothing
                 Try
+                    ' INSIDE the guard, and that is a fix rather than a tidy-up:
+                    ' activating a WinRT class is one more thing that can fail on a
+                    ' phone (a class the platform will not hand out at all answers
+                    ' with an exception rather than Nothing), and a constructor
+                    ' written outside this Try would escape StartAsync entirely --
+                    ' through the caller's own Try, which has no Catch -- and end the
+                    ' process. A port this listener cannot have is the next port; a
+                    ' listener that cannot exist is the same answer.
+                    listener = New StreamSocketListener()
                     Await listener.BindServiceNameAsync(candidate.ToString())
+                    ' And the subscription is inside the same guard: it is the other
+                    ' half of "this listener is usable", and subscribing is one more
+                    ' WinRT call that can answer with an exception. A port that bound
+                    ' but cannot be listened on is a port this page cannot use, and
+                    ' the next one is the answer.
+                    AddHandler listener.ConnectionReceived, AddressOf OnConnectionReceived
                 Catch
                     ' EADDRINUSE from another app, or an address the platform will not
                     ' let a listener have. The next port is the answer, and the address
                     ' shown is the one that actually bound -- never the one requested.
-                    listener.Dispose()
+                    If listener IsNot Nothing Then listener.Dispose()
                     Continue For
                 End Try
 
                 _listener = listener
                 _port = candidate
-                AddHandler _listener.ConnectionReceived, AddressOf OnConnectionReceived
                 Return TokenRunning
             Next
 

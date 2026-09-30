@@ -467,6 +467,22 @@ check('the app closes the listener when the settings screen closes',
   /Private Sub CloseSettingsButton_Click[\s\S]{0,400}StopTokenInbox\(\)/.test(mainSource)
   && /Private Sub StopTokenInbox[\s\S]{0,400}_tokenPage\.Close\(\)/.test(mainSource),
   'a listener left open behind a closed screen is the one state this feature must not have');
+
+// Round 21. The report was "tapping the button ends the app", and both holes were
+// the same shape: a WinRT call that makes a listener usable, written OUTSIDE the
+// per-port Try. StartAsync is called from an Async Sub with a Try and no Catch, so
+// an exception from either one leaves the click handler and is rethrown on the UI
+// thread with nothing above it. These two contracts stand for that, because no
+// referee can run the phone and no checker can see a Try's extent.
+const portLoop = (shellCode.match(
+  /For offset As Integer = 0 To TokenInbox\.PortsToTry - 1[\s\S]*?\n\s*Next/) || [''])[0];
+check('the listener is activated AND subscribed inside the per-port guard',
+  /Try[\s\S]*New StreamSocketListener\(\)[\s\S]*AddHandler listener\.ConnectionReceived[\s\S]*Catch/.test(portLoop),
+  'a constructor or a subscription outside the Try escapes StartAsync, and its caller is an Async Sub with no Catch');
+check('the start/stop handler cannot end the process, and says what it could not do',
+  /Private Async Sub TokenInboxToggleButton_Click[\s\S]*?Catch ex As Exception[\s\S]*?ex\.GetType\(\)\.Name/.test(mainSource)
+  && /TokenInboxStatus\.Text = ex\.GetType\(\)\.Name/.test(mainSource),
+  'a settings toggle that can close a browser is a worse defect than a listener that will not start');
 check('a saved token switches the engine to the server and stores the address',
   /_appSettings\.EngineSetting = EngineChoice\.Remote/.test(mainSource)
   && /_appSettings\.RemoteEnabled = True/.test(mainSource)
