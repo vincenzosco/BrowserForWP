@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 // Rules for turning an HTTP response into document text, mirrored from
 // BrowserForWP/Diagnostics/NetDocumentFetcher.vb and
-// BrowserForWP.Core/Engine/Native/IDocumentFetcher.vb.
+// BrowserForWP.Core/Engine/Native/IDocumentFetcher.vb -- plus, since the tree-wide
+// audit round, the two untrusted-input rules in HttpClient13 (a url that would
+// splice a second request, a negative Content-Length or chunk size that would size
+// an array as count - 1) and the DoH resolver's very deliberate A/AAAA asymmetry.
 import fs from 'node:fs';
 
 let failures = 0;
@@ -147,6 +150,87 @@ const seamRaw = readIfPresent('BrowserForWP.Core/Engine/Native/IDocumentFetcher.
 const seam = stripVbComments(seamRaw);
 check('IDocumentFetcher.vb exists', seamRaw.length > 0);
 check('the seam does not reference Net', seamRaw.length > 0 && !seam.includes('BrowserForWP.Net'));
+
+// ── The request is BUILT BY CONCATENATION, and the url is untrusted input ──────
+// HttpClient13 assembles "GET <path> HTTP/1.1" and every header with string
+// concatenation, and the url reaches it from the address bar, from a redirect
+// Location header and from a setting written by hand. A CR, LF or NUL inside it is
+// therefore not a bad character: it is a second request, or a header of the
+// sender's choosing, smuggled into the first one. ParsedUrl.Parse refuses them, and
+// this mirrors that rule so the JS and the VB cannot drift apart.
+function parseUrl(url) {
+  if (!url) throw new Error('url required');
+  for (const ch of url) {
+    const code = ch.codePointAt(0);
+    if (code === 13 || code === 10 || code === 0) {
+      throw new Error('url contains a control character (0x' + code.toString(16) + ')');
+    }
+  }
+  const schemeEnd = url.indexOf('://');
+  const scheme = schemeEnd > 0 ? url.slice(0, schemeEnd).toLowerCase() : 'https';
+  if (scheme !== 'https') throw new Error('only https is supported, got ' + scheme);
+  const rest = schemeEnd > 0 ? url.slice(schemeEnd + 3) : url;
+  const pathStart = rest.indexOf('/');
+  const authority = pathStart < 0 ? rest : rest.slice(0, pathStart);
+  const path = pathStart < 0 ? '/' : rest.slice(pathStart);
+  const colon = authority.indexOf(':');
+  const host = colon >= 0 ? authority.slice(0, colon) : authority;
+  const port = colon >= 0 ? Number(authority.slice(colon + 1)) : 443;
+  if (!host) throw new Error('no host in ' + url);
+  return { scheme, host, port, path };
+}
+const thrownBy = (fn) => { try { fn(); return ''; } catch (e) { return e.message; } };
+check('a normal url parses', parseUrl('https://example.com/a?b=1').host === 'example.com');
+check('https with a port parses', parseUrl('https://example.com:8443/x').port === 8443);
+check('plain http is refused, not upgraded',
+  thrownBy(() => parseUrl('http://example.com/')).includes('only https'));
+check('a url with CR is refused',
+  thrownBy(() => parseUrl('https://a/\rX: 1')).includes('control character'));
+check('a url with LF is refused',
+  thrownBy(() => parseUrl('https://a/\nX: 1')).includes('control character'));
+check('a url with NUL is refused',
+  thrownBy(() => parseUrl('https://a/\u0000')).includes('control character'));
+
+const httpRaw = readIfPresent('BrowserForWP.Net/Http/HttpClient13.vb');
+const httpClient = stripVbComments(httpRaw);
+check('the VB refuses the same three characters',
+  /charCode = 13 OrElse charCode = 10 OrElse charCode = 0/.test(httpClient),
+  'and NOT via Microsoft.VisualBasic.ControlChars, which the Store profile removes');
+check('the VB refuses a negative Content-Length',
+  /If length < 0 Then/.test(httpClient) && httpClient.includes('negative Content-Length'),
+  'the ceiling cannot see it, and ReadExactlyAsync sizes an array as count - 1');
+check('the VB refuses a negative chunk size',
+  /If size < 0 Then/.test(httpClient) && httpClient.includes('negative chunk size'),
+  'hex parsing accepts a sign, so "-1" reaches the same array sizing');
+check('the header block still has its 64 KiB ceiling',
+  httpClient.includes('response header block exceeds 64 KiB'));
+check('the body still has its size cap', httpClient.includes('response exceeds the size cap'));
+
+// ── The DoH resolver's two queries are NOT symmetric, and the asymmetry is the
+// point. AAAA may fail: plenty of networks are v4-only and a host with no IPv6
+// record is normal. The A query is what the caller wanted. A host with no A record
+// is answered by a SUCCESSFUL response carrying zero answers (ParseResponse returns
+// an empty list, no exception), so the only way that call throws is that the QUERY
+// failed -- HTTP 500, a dead transport, an unparseable answer. Swallowing it used to
+// end the method at "no address records", replacing a real reason with a false one.
+const dohRaw = readIfPresent('BrowserForWP.Net/Dns/DohResolver.vb');
+const doh = stripVbComments(dohRaw);
+// Exact shape, not a window: everything between the AAAA block's LAST `End Try`
+// and the A call must contain no `Catch`, which is the same statement as "the A
+// call is not inside a Try". A plain "is there a Catch within N characters" test is
+// useless here, because the AAAA block's own Catch sits directly above it.
+const beforeA = doh.slice(0, doh.indexOf('QueryAsync(host, TypeA)'));
+const lastEndTry = beforeA.lastIndexOf('End Try');
+check('the A query is outside the AAAA query\'s Try/Catch',
+  beforeA.length > 0 && lastEndTry >= 0 && !/Catch/.test(beforeA.slice(lastEndTry)),
+  'a failed A query must carry its own reason to a caller that falls back to the OS');
+check('an answer with no records is still a refusal',
+  doh.includes('no address records for '));
+// The phrase lives in a COMMENT, and `doh` is the stripped source -- so this one
+// reads the raw file on purpose. The first draft used the stripped text and the
+// check could never have passed.
+check('the AAAA query keeps its own leniency, and says why',
+  /Catch[\s\S]{0,240}No IPv6 records is a normal answer/.test(dohRaw));
 
 console.log(`\n${checks - failures}/${checks} fetch-rule checks passed.`);
 if (failures > 0) {

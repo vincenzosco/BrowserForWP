@@ -80,9 +80,11 @@ Namespace Diagnostics
             Dim raw As String = Nothing
             Try
                 raw = Await engine.InvokeScriptAsync(ProbeScript).ConfigureAwait(False)
-            Catch ex As Exception
+            Catch
                 ' A document that cannot be scripted (still loading, cross-origin at
                 ' the top level) yields no data rather than an exception in the UI.
+                ' CouldRun stays False, which IS the report -- and the rule that an
+                ' absent measurement moves nothing is what the caller acts on.
                 Return report
             End Try
 

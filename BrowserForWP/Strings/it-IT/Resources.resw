@@ -297,6 +297,9 @@
   <data name="EngineReasonReportFailed" xml:space="preserve">
     <value>Questa schermata non è riuscita ad applicare ciò che il motore ha segnalato.</value>
   </data>
+  <data name="ShellSettingFailed" xml:space="preserve">
+    <value>Questo browser non è riuscito ad applicare ciò che hai cambiato.</value>
+  </data>
   <data name="EngineReasonAutoNoMeasurement" xml:space="preserve">
     <value>Automatico: nessuna pagina è stata ancora misurata, quindi si usa il motore di sistema.</value>
   </data>

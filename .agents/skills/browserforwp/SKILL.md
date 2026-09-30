@@ -257,7 +257,7 @@ verified if you skipped its command.
 | Test vectors themselves | `node tools/gen-vectors.mjs` | every line prefixed `✓`, exit code 0 |
 | The vector emitter itself | `node tools/gen-vectors.mjs` | `emitted VB braces balanced`, else it refuses to write, exit code 1 |
 | `BrowserForWP.Core/` logic | `node tools/proto/core-logic.mjs` | `core-logic checks, 0 failure(s)` (72 assertions) |
-| `Engine/Native/IDocumentFetcher.vb` / fetch rules | `node tools/proto/fetch-rules.mjs` | `31/31 checks passed`. Recorded as 25/25 until Round 14, which ran it: the pin-enforcement check (commit `03734d1`) was added without the number here |
+| `Engine/Native/IDocumentFetcher.vb` / fetch rules / `HttpClient13.vb` / the DoH resolver | `node tools/proto/fetch-rules.mjs` | `45/45 checks passed`. Recorded as 25/25 until Round 14, which ran it: the pin-enforcement check (commit `03734d1`) was added without the number here. Round 23 added fourteen: a JS mirror of `ParsedUrl.Parse`'s control-character refusal (CR, LF, NUL — a url is pasted, redirect-supplied or hand-written, and the request line is BUILT BY CONCATENATION, so those three splice a header or a second request into the first), the two guards that close the `count - 1` array sizing (a negative `Content-Length`, and a negative hex chunk size — both parse successfully), the two ceilings that keep a hostile response bounded, and the DoH resolver's A/AAAA asymmetry: AAAA may fail because plenty of networks are v4-only, but a host with no A record is a SUCCESSFUL answer with zero records, so a failure of the A query is a failed query and must keep its own reason |
 | `Engine/Native/Html*.vb` | `node tools/proto/htmlparse.mjs` | `30/30 checks passed` |
 | `Engine/Native/CssParser.vb` / `SelectorMatcher.vb` | `node tools/proto/csscascade.mjs` | `47/47 checks passed` |
 | `Engine/Native/{Style,UserAgent,BoxTree}*.vb`, `DocumentDumper.vb`, or the diagnostics wiring | `node tools/proto/boxtree.mjs` | `48/48 checks passed` |
@@ -278,7 +278,8 @@ verified if you skipped its command.
 | Any claim about re-configuring Trident | `node tools/proto/ie-adapt.mjs` | `9/9 checks passed` |
 | Any claim about leaving the AppContainer, or about getting JIT memory | `node tools/proto/sandbox-escape.mjs` | `15/15 checks passed` |
 | `BrowserForWP.Polyfill/compat.js` | `node tools/check-polyfill.mjs` | `is valid ES5` |
-| Any `.vb`, `.vbproj`, `.xaml` or `.resw` | `node tools/check-vb.mjs` | `0 finding(s)`, exit code 0 (19 groups over 19 categories) |
+| Any `.vb`, `.vbproj`, `.xaml` or `.resw` | `node tools/check-vb.mjs` | `0 finding(s)`, exit code 0 (20 groups over 20 categories) |
+| A `Catch` that discards what it caught | `node tools/check-vb.mjs` | `0 finding(s)`; group 20. An EMPTY `Catch` needs a comment inside its own block, and a `Catch` that BINDS an exception and never reads it is the same silence with a name — it must read the binding, carry that comment, or be written as a bare `Catch` (the language's own way of saying the reason is not wanted). The comment has to be inside the catch, not above the `Try`, so the reason sits where the silence is. Added in Round 23 after a walk of all 64 `.vb` files found 17 empty catches and 15 unread bindings — ten of the empties in `MainPage.xaml.vb`, a file three earlier rounds had edited without noticing them. The group plants both defects and both legal shapes and requires `1, 1, 0, 0` from its own detector before it is trusted |
 | A hop from a worker thread to the UI thread (any `RunAsync` on something named `…Dispatcher`) | `node tools/check-vb.mjs` | `0 finding(s)`; group 19. It fails an unawaited hop, a hop outside a `Try`, a `Try` with no `Catch`, a `Catch` that binds no exception, a `Catch` whose body never uses its binding, an empty `Catch`, AND a run in which no hop was found at all (a guard with nothing to look at is not a green guard). Every one of those was measured red against a planted defect |
 | A declaration that names a VB keyword (`Dim next`, `Function Error`) | `node tools/check-vb.mjs` | `0 finding(s)`; group 17. Its word list is measured by `tools/keyword-probe.cmd`, not quoted from the language reference |
 | A literal `Localizer.Get("…")` key, or a local that shadows a member of its own class | `node tools/check-vb.mjs` | `0 finding(s)`. Two groups added in Round 20: every literal key the code asks for exists in the `.resw` pair (a mistyped key shows its own name on the screen), and no local hides a member of its own class — `Dim carry` inside the method `Carry` is the shape, and it found two files that predate the round. A local wins for the WHOLE method, including calls written above it |
@@ -406,7 +407,7 @@ BrowserForWP/Engine/TokenPage.vb ← the page the phone serves so a token is pas
                                  of HTTP a browser actually sends, and the form.
                                  Every sentence from Localizer, every decision
                                  from BrowserForWP.Core/Engine/Remote/TokenInbox.vb
-tools/check-vb.mjs            ← 19 categories / 19 check groups of static
+tools/check-vb.mjs            ← 20 categories / 20 check groups of static
                                  VB/XAML/project/resw/theme-key/flavour/
                                  import/name-legality/doc-comment checks, plus
                                  every literal Localizer key and every local that

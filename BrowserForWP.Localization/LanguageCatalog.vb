@@ -85,7 +85,10 @@ Namespace Localization
                 primary = New CultureInfo(candidate).TwoLetterISOLanguageName
             Catch ex As ArgumentException
                 ' CultureInfo rejects some well-formed BCP-47 tags; fall back to a
-                ' plain split so weird-but-harmless tags still resolve.
+                ' plain split so weird-but-harmless tags still resolve. The instance is
+                ' deliberately not used: the fallback is the same for every
+                ' ArgumentException, and the TYPE is the whole point of this clause --
+                ' a name of another type is a bug here, not a tag to guess at.
                 primary = candidate.Split("-"c)(0)
             End Try
 

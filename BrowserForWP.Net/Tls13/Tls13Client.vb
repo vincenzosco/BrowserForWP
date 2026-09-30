@@ -513,10 +513,17 @@ Namespace Tls13
 
         Public Sub Dispose() Implements IDisposable.Dispose
             IsConnected = False
+            ' Three swallows, all of them deliberate and all of them the same
+            ' statement: Dispose runs on paths where the connection is ALREADY broken
+            ' (a refused handshake, a socket the server dropped, the shell's Stop), so
+            ' "this thing will not close" is the state being cleaned up rather than
+            ' news. Each is its own Try so the second and third still happen when the
+            ' first throws.
             If _reader IsNot Nothing Then
                 Try
                     _reader.Dispose()
                 Catch
+                    ' Already detached or never attached.
                 End Try
                 _reader = Nothing
             End If
@@ -524,6 +531,7 @@ Namespace Tls13
                 Try
                     _writer.Dispose()
                 Catch
+                    ' Already detached or never attached.
                 End Try
                 _writer = Nothing
             End If
@@ -531,6 +539,7 @@ Namespace Tls13
                 Try
                     _socket.Dispose()
                 Catch
+                    ' The socket may already be gone.
                 End Try
                 _socket = Nothing
             End If

@@ -43,6 +43,11 @@
 //                              reported -- added in Round 21, after two hops in
 //                              the token page were fire-and-forget and lost a
 //                              verdict in a Catch that could not say so
+//   20. Catch reporting       no Catch swallows what it caught: an empty one needs
+//                              a comment saying why, and a binding that is never
+//                              read is the same silence with a name -- added after
+//                              a walk of the whole tree found 17 empty and 15
+//                              unread in files no earlier round had looked at
 //
 //  Group 12's list is not a guess about what the profile removes: every entry in
 //  it was paid for by a guest build that failed. FontStyles is the latest.
@@ -1913,6 +1918,111 @@ function checkReservedNames() {
   if (!anyBad) ok('no declaration introduces a VB keyword as a name');
 }
 
+// ── 20. Catch reporting ────────────────────────────────────────────────
+// A Catch that discards what it caught is the family this project keeps paying
+// for. An empty Catch is a failure nothing anywhere can see; a Catch that BINDS a
+// exception and never reads it is the same silence with more punctuation. Both
+// were measured on real defects -- Round 21's settings toggle and Round 22's read
+// loop -- and every fix so far was hand work in one file. This is the rule.
+//
+// What is accepted, and why each clause is written the way it is:
+//
+//   * a Catch whose body READS its binding (ex.Message, ex.GetType()) reports;
+//   * a Catch with a body that never touches its binding either carries a comment
+//     inside the block saying why the reason is not needed, or was changed to
+//     `Catch`, which is the language's own way of saying "do not give me the
+//     reason" -- and is what the dispose paths in this tree now write;
+//   * an EMPTY Catch must carry a comment, because a swallow with no explanation
+//     is indistinguishable from an oversight.
+//
+// The comment is the escape hatch ON PURPOSE: it makes the choice deliberate and
+// reviewable, which is exactly what the quiet version was not. It has to be INSIDE
+// the Catch, not above the Try, so the reason sits where the silence is -- and the
+// block ends at the End Try that closes ITS OWN Try, so a nested Try cannot lend
+// its comment to the wrong one.
+function catchProblems(source) {
+  const lines = source.split(/\r?\n/);
+  const problems = [];
+  lines.forEach((raw, idx) => {
+    if (!/^\s*Catch\b/.test(raw)) return;
+    const clause = raw.trim();
+    let depth = 0;
+    let end = idx + 1;
+    for (; end < lines.length; end++) {
+      const s = lines[end].trim();
+      if (/^Try\b/.test(s)) depth++;
+      else if (/^End Try\b/.test(s)) { if (depth === 0) break; depth--; }
+    }
+    const body = lines.slice(idx + 1, end);
+    const statements = body.filter((l) => {
+      const s = l.trim();
+      return s !== '' && !s.startsWith("'");
+    });
+    const explained = body.some((l) => l.trim().startsWith("'"));
+    const bound = /^Catch\s+([A-Za-z_]\w*)\s+As\b/.exec(clause);
+    if (statements.length === 0) {
+      if (!explained) problems.push({ line: idx + 1, kind: 'empty' });
+      return;
+    }
+    const used = bound
+      ? statements.some((l) => new RegExp('\\b' + bound[1] + '\\b').test(l))
+      : false;
+    if (bound && !used && !explained) {
+      problems.push({ line: idx + 1, kind: 'unused', name: bound[1] });
+    }
+  });
+  return problems;
+}
+
+function checkCatchReporting() {
+  heading('Catch reporting (a failure nobody can see)');
+  let anyBad = false;
+
+  // The detector proves it can see its own subject before it is trusted with the
+  // tree: two planted defects it must find, two legal shapes it must spare.
+  const snippet = (inner) => ['    Private Sub A()', '        Try', '            Throw New Exception("x")',
+    ...inner, '        End Try', '    End Sub'].join('\n');
+  const silent = catchProblems(snippet(['        Catch ex As Exception']));
+  const unused = catchProblems(snippet(['        Catch ex As Exception', '            Return']));
+  const bare = catchProblems(snippet(['        Catch', '            Return']));
+  const explained = catchProblems(snippet(['        Catch', "            ' Already gone."]));
+  if (silent.length !== 1 || silent[0].kind !== 'empty' ||
+      unused.length !== 1 || unused[0].kind !== 'unused' ||
+      bare.length !== 0 || explained.length !== 0) {
+    fail('catch', ROOT,
+      `the detector itself is broken: silent=${silent.length}, unused=${unused.length}, ` +
+      `bare Catch=${bare.length}, explained=${explained.length} (expected 1, 1, 0, 0). ` +
+      'Fix this group before trusting it.');
+    anyBad = true;
+  }
+
+  for (const project of projects) {
+    for (const src of walk(project.dir, (f) => f.endsWith('.vb'))) {
+      for (const problem of catchProblems(fs.readFileSync(src, 'utf8'))) {
+        anyBad = true;
+        if (problem.kind === 'empty') {
+          fail('catch', src,
+            'an empty Catch with no comment: nothing can see this failure, and ' +
+            'nothing says the silence was meant. Report it (read the binding), or ' +
+            'write a comment inside this block saying why the reason is not needed.',
+            problem.line);
+        } else {
+          fail('catch', src,
+            `this Catch binds '${problem.name}' and never reads it: the framework's ` +
+            'own sentence about why is worth more than this file\'s guess at one. ' +
+            'Use the binding, or drop it and write `Catch` (the language saying the ' +
+            'reason is not wanted), or write a comment here saying why.',
+            problem.line);
+        }
+      }
+    }
+  }
+  if (!anyBad) {
+    ok('every Catch either reports what it caught or says why it does not ' +
+      '(detector self-test passed: 1, 1, 0, 0)');
+  }
+}
+
 // ── Run ────────────────────────────────────────────────────────────────────
 console.log('VB.NET structural checker — BrowserForWP');
 console.log('(This is NOT a compiler. See the header for exactly what it proves.)');
@@ -1952,6 +2062,7 @@ const GROUPS = [
   checkLocalShadowing,
   checkReservedNames,
   checkUiThreadHops,
+  checkCatchReporting,
 ];
 
 for (const group of GROUPS) group();

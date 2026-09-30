@@ -443,9 +443,10 @@ Namespace Tls13
                     publicKey,
                     WinRtCrypto.ToBuffer(signedContent),
                     WinRtCrypto.ToBuffer(info.Signature))
-            Catch ex As Exception
+            Catch
                 ' A malformed signature makes Verify throw rather than return false.
-                ' Both mean "not verified".
+                ' Both mean "not verified", and the caller treats False as a failed
+                ' handshake rather than as a reason to show the platform's message.
                 Return False
             End Try
         End Function
@@ -479,7 +480,11 @@ Namespace Tls13
                 End If
                 Dim digest = WinRtCrypto.Sha256(parsedInfo.PublicKeyBlob)
                 Return Convert.ToBase64String(digest)
-            Catch ex As Exception
+            Catch
+                ' An empty pin is the documented failure answer and it is FAIL-CLOSED:
+                ' VerifyPin turns an empty presented pin into False, so a certificate
+                ' that will not parse fails a pinned host rather than passing it. The
+                ' reason is not carried because there is nothing safe to do with it.
                 Return String.Empty
             End Try
         End Function

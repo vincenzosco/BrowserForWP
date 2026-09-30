@@ -156,6 +156,10 @@ Public NotInheritable Class MainPage
                 Localizer.Override(_appSettings.LanguageOverride)
             End If
         Catch ex As Exception
+            ' State that will not load is state the person will find missing, and it
+            ' used to be missing in silence: the history list, the favourites and the
+            ' pins simply came up empty with nothing said.
+            StatusText.Text = Localizer.Get("ShellSettingFailed") & " " & ex.GetType().Name & ": " & ex.Message
         End Try
     End Sub
 
@@ -170,6 +174,10 @@ Public NotInheritable Class MainPage
             localValues("favorites") = _favoritesStore.Serialize()
             localValues("pins") = _pinTable.Serialize()
         Catch ex As Exception
+            ' The same asymmetry as above, in the other direction: a change the person
+            ' made that did not persist is a change that comes back wrong next launch,
+            ' and it used to be lost without a word.
+            StatusText.Text = Localizer.Get("ShellSettingFailed") & " " & ex.GetType().Name & ": " & ex.Message
         End Try
     End Sub
 
@@ -468,6 +476,9 @@ Public NotInheritable Class MainPage
         Try
             Await scripted.SetNightModeAsync(_appSettings.NightMode)
         Catch ex As Exception
+            ' A setting the person turned on, which the page refused to take. It used
+            ' to be nothing at all on the screen: night mode simply did not happen.
+            StatusText.Text = Localizer.Get("ShellSettingFailed") & " " & ex.GetType().Name & ": " & ex.Message
         End Try
     End Sub
 
@@ -748,6 +759,7 @@ Public NotInheritable Class MainPage
             Next
             _appSettings.SetSessionTabs(openUrls)
         Catch ex As Exception
+            StatusText.Text = Localizer.Get("ShellSettingFailed") & " " & ex.GetType().Name & ": " & ex.Message
         End Try
     End Sub
 
@@ -793,6 +805,10 @@ Public NotInheritable Class MainPage
                 FindResult.Text = Localizer.Get("FindNoMatch")
             End If
         Catch ex As Exception
+            ' The find bar's own line, not FindNoMatch: the person asked for a search
+            ' and it did not run, and "no match" would be a lie about a search that
+            ' never happened.
+            FindResult.Text = ex.GetType().Name & ": " & ex.Message
         End Try
     End Sub
 
@@ -810,6 +826,10 @@ Public NotInheritable Class MainPage
                 ErrorText.Visibility = Visibility.Visible
             End If
         Catch ex As Exception
+            ' Reported the same way the False answer above is reported: the person
+            ' asked to read the page as an article and it did not happen.
+            ErrorText.Text = Localizer.Get("ErrorPageFailed") & " " & ex.GetType().Name & ": " & ex.Message
+            ErrorText.Visibility = Visibility.Visible
         End Try
     End Sub
 
@@ -817,6 +837,9 @@ Public NotInheritable Class MainPage
         Try
             DataTransferManager.ShowShareUI()
         Catch ex As Exception
+            ' The share sheet is the OS's, so its own sentence is the only true one:
+            ' this code cannot know why the platform refused to open it.
+            StatusText.Text = ex.GetType().Name & ": " & ex.Message
         End Try
     End Sub
 
@@ -833,7 +856,8 @@ Public NotInheritable Class MainPage
             ' exact advice, and a shared page URL is a web link by definition.
             e.Request.Data.SetWebLink(sharedUri)
         Catch ex As Exception
-            e.Request.FailWithDisplayText(Localizer.Get("ErrorPageFailed"))
+            e.Request.FailWithDisplayText(
+                Localizer.Get("ErrorPageFailed") & " " & ex.GetType().Name & ": " & ex.Message)
         End Try
     End Sub
 
@@ -877,10 +901,33 @@ Public NotInheritable Class MainPage
                 Await scripted.SetNightModeAsync(True)
             End If
         Catch ex As Exception
+            ' The shim is what lets a page written for a modern browser work at all
+            ' on this engine, and night mode is a setting the person turned on. Both
+            ' used to fail in silence, which on a phone reads as "this site is
+            ' broken" with nothing to go on.
+            ErrorText.Text = Localizer.Get("ErrorPageFailed") & " " & ex.GetType().Name & ": " & ex.Message
+            ErrorText.Visibility = Visibility.Visible
         End Try
     End Sub
 
+    ''' <summary>
+    ''' The navigation report, GUARDED, for the same reason OnRemoteNavigated is.
+    ''' This is an Async Sub, so an exception that leaves it is rethrown on the UI
+    ''' thread with nothing above it -- and the body below touches the session, the
+    ''' stores, the XAML tree and two engine calls. A throw in any of them used to
+    ''' end the process with no message at all; now the strip says what failed.
+    ''' </summary>
     Private Async Sub OnNavigationCompleted(sender As WebView, e As WebViewNavigationCompletedEventArgs)
+        Try
+            Await ApplyNavigationCompleted(e)
+        Catch ex As Exception
+            StatusText.Text = String.Empty
+            ErrorText.Text = Localizer.Get("ErrorPageFailed") & " " & ex.GetType().Name & ": " & ex.Message
+            ErrorText.Visibility = Visibility.Visible
+        End Try
+    End Sub
+
+    Private Async Function ApplyNavigationCompleted(e As WebViewNavigationCompletedEventArgs) As Task
         If _navigationToken Is Nothing Then Return
         _navigationToken = Nothing
 
@@ -924,6 +971,12 @@ Public NotInheritable Class MainPage
                 Await scripted.SetNightModeAsync(True)
             End If
         Catch ex As Exception
+            ' The shim is what lets a page written for a modern browser work at all
+            ' on this engine, and night mode is a setting the person turned on. Both
+            ' used to fail in silence, which on a phone reads as "this site is
+            ' broken" with nothing to go on.
+            ErrorText.Text = Localizer.Get("ErrorPageFailed") & " " & ex.GetType().Name & ": " & ex.Message
+            ErrorText.Visibility = Visibility.Visible
         End Try
 
         Try
@@ -959,8 +1012,15 @@ Public NotInheritable Class MainPage
                 End If
             End If
         Catch ex As Exception
+            ' This block is where a measurement decides whether the page should be
+            ' drawn by the server instead. A throw here used to be swallowed, so the
+            ' automatic fallback that the whole block exists for simply did not
+            ' happen and the screen said nothing about it.
+            StatusText.Text = String.Empty
+            ErrorText.Text = Localizer.Get("ErrorPageFailed") & " " & ex.GetType().Name & ": " & ex.Message
+            ErrorText.Visibility = Visibility.Visible
         End Try
-    End Sub
+    End Function
 
     Private Sub HideError()
         ErrorText.Visibility = Visibility.Collapsed
@@ -1265,7 +1325,9 @@ Public NotInheritable Class MainPage
                 CompatProbeResult.Text = String.Join(", ", report.MissingFeatures)
             End If
         Catch ex As Exception
-            CompatProbeResult.Text = Localizer.Get("ErrorPageFailed")
+            ' "Failed" without a reason is the shape this project keeps having to
+            ' fix: the probe is a diagnostic, so the reason belongs on screen.
+            CompatProbeResult.Text = Localizer.Get("ErrorPageFailed") & " " & ex.GetType().Name & ": " & ex.Message
         Finally
             CompatProbeButton.IsEnabled = True
         End Try
@@ -1319,7 +1381,7 @@ Public NotInheritable Class MainPage
             SavePersistedState()
             PinStatus.Text = Localizer.Get("PinStored")
         Catch ex As Exception
-            PinStatus.Text = Localizer.Get("ErrorPageFailed")
+            PinStatus.Text = Localizer.Get("ErrorPageFailed") & " " & ex.GetType().Name & ": " & ex.Message
         End Try
     End Sub
 
@@ -1729,7 +1791,7 @@ Public NotInheritable Class MainPage
             IeModeResult.Text = Localizer.Get("IeModeReport") & modeReport.DocumentMode.ToString() & vbCrLf &
                                 modeReport.RawJson
         Catch ex As Exception
-            IeModeResult.Text = Localizer.Get("ErrorPageFailed")
+            IeModeResult.Text = Localizer.Get("ErrorPageFailed") & " " & ex.GetType().Name & ": " & ex.Message
         Finally
             IeModeButton.IsEnabled = True
         End Try

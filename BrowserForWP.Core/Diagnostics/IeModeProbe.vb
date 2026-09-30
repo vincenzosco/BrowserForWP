@@ -60,7 +60,9 @@ Namespace Diagnostics
             Dim raw As String = Nothing
             Try
                 raw = Await engine.InvokeScriptAsync(ProbeScript).ConfigureAwait(False)
-            Catch ex As Exception
+            Catch
+                ' Nothing IS the answer this method documents ("Returns Nothing when
+                ' it cannot answer"), and the caller prints ProbeNotRun for it.
                 Return Nothing
             End Try
 

@@ -111,7 +111,8 @@ node tools/proto/modern-sites.mjs    # shim markers, redirect rules, delivery wi
 # comments and so forbade documenting the rule it enforced, an assertion that had
 # dropped a child and so expected 2 where there are 3, and a mirror that tested
 # source text where the rule was about behaviour.
-node tools/proto/fetch-rules.mjs     # fetch rules: charset, media type, no Accept-Encoding
+node tools/proto/fetch-rules.mjs     # fetch rules: charset, media type, no Accept-Encoding,
+                                     # plus the url/framing guards and the DoH asymmetry
 node tools/proto/htmlparse.mjs       # tokenizer + tree builder, implicit head/body
 node tools/proto/csscascade.mjs      # CSS parse, specificity, matching, cascade, lengths
 node tools/proto/boxtree.mjs         # box tree, anonymous blocks, diagnostics wiring
@@ -2378,6 +2379,110 @@ why `RemoteChannel.vb` is held by source contracts rather than by execution; the
 new sentences are about what the code SAYS when a message is dropped, and no sentence
 here has been seen on a screen.
 
+### Round 23 -- the tree-wide swallow audit
+
+**The ask:** examine all the code, look for bugs, and fix them.
+
+**How the walk was done, because how it was done is the finding.** Every earlier
+round fixed one occurrence at a time, in the file where a symptom had appeared. This
+round ran a scripted pass over all 64 `.vb` files for the two shapes instead -- a
+`Catch` whose body has no statements, and a `Catch` that binds an exception and never
+reads it -- and it found **17 empty catches and 15 unread bindings, ten of the 17 in
+`MainPage.xaml.vb` alone**. The defect class the last three rounds had been chasing
+one site at a time was sitting in files nobody had looked at.
+
+**The ones a person could SEE as a wrong screen, not just a missing sentence.**
+
+1. `OnNavigationCompleted` was a 60-line `Async Sub` whose body ran **outside any
+   `Try`**: an exception anywhere in it -- the session, the stores, the XAML tree --
+   was rethrown on the UI thread with nothing above it, which is the exact shape of
+   Round 21's crash. It is now a guarded wrapper around `ApplyNavigationCompleted`,
+   the same shape Round 22 gave `OnRemoteNavigated`.
+2. Inside that method, the block that runs the compatibility probe and decides
+   whether the page should be drawn by the SERVER instead was wrapped in
+   `Try ... Catch ex As Exception / End Try` with nothing in the catch. A throw there
+   meant the automatic fallback the whole block exists for simply did not happen, and
+   the screen said nothing about it. Same for the shim injection and night mode.
+3. `DoFindNext`, `ReadingButton_Click`, `ShareButton_Click`, `OnShareRequested` and
+   the three diagnostics buttons already TOLD the person that something failed --
+   "This page could not be displayed" -- and then threw away the reason. They now
+   append the exception's own type and message, which is the Round 21 precedent.
+4. `LoadPersistedState`, `SavePersistedState` and `SaveSessionTabs` lost the person's
+   history, favourites, pins and session in silence, on both sides: state that comes
+   back empty and a change that does not persist. They report on the status line
+   through one new key, `ShellSettingFailed`. The catalogue went 130 -> 131.
+5. The rest are deliberate and now say so in a comment inside the block: three
+   `Dispose` calls on a connection that is already broken, a listener that is already
+   gone, probe answers whose `False`/`Nothing` IS the report, and an encoding the
+   platform simply does not have.
+
+**Three real bugs the same walk found in the network layer.**
+
+* **A url could splice a second request into the first.** `ParsedUrl.Parse` accepted
+  CR, LF and NUL, and the request line and every header are built by CONCATENATION.
+  The url arrives from the address bar, from a redirect `Location` header and from a
+  setting written by hand, so a pasted line break is a smuggled header -- `Host:`
+  override, or a second request in front of the real one. Refused rather than
+  escaped: nothing legitimate contains these, and quietly rewriting them would send
+  bytes the caller never asked for.
+* **A negative `Content-Length` bypassed the size ceiling.** `Integer.TryParse`
+  accepts a sign, so `Content-Length: -1` passed `> MaxResponseBytes` and reached
+  `ReadExactlyAsync`, which sizes an array as `count - 1` and dies with an arithmetic
+  exception instead of naming the header it did not like. The hex chunk size has the
+  same hole, because `HexNumber` parsing also accepts a sign. Both are now refused by
+  name.
+* **The DoH resolver lied about why a lookup failed.** The AAAA query's failure is
+  tolerated on purpose (plenty of networks are v4-only) and says so, but the **A**
+  query's failure was swallowed too -- and then the method threw "no address records
+  for host". A host with no A record is answered by a SUCCESSFUL response carrying
+  zero answers, so the only way that call throws is that the query itself failed: an
+  HTTP 500, a dead transport, an unparseable answer. The real reason was replaced by
+  a false one. The A query now carries its own reason up; both callers already treat
+  a resolution failure as non-fatal and fall back to the OS resolver, so nothing
+  else changes.
+
+**A rule, instead of more hand work.** `check-vb.mjs` gained a twentieth group: no
+`Catch` swallows what it caught. An empty `Catch` needs a comment inside the block; a
+`Catch` that binds an exception and never reads it needs one of three things -- read
+the binding, carry that comment, or be written as a bare `Catch`, which is the
+language's own way of saying the reason is not wanted (and is what the dispose paths
+in this tree now write). The comment has to be INSIDE the catch, not above the `Try`,
+so the reason sits where the silence is. The group carries a self-test that plants
+both defects and both legal shapes and requires `1, 1, 0, 0` before it is trusted with
+the tree, and both clauses were measured red against a planted defect in the real
+tree. `tools/proto/fetch-rules.mjs` gained fourteen checks for the network fixes,
+including a JS mirror of the url rule so the two implementations cannot drift.
+
+**And the referee caught the fix itself, again.** The first version of the url guard
+compared against `ControlChars.Cr` and `ControlChars.Lf`. Group 12 refused it before
+the guest build ever saw it: `Microsoft.VisualBasic.ControlChars` is not in the .NET
+for Windows Store apps profile (BC30451), even though `ChrW` and `AscW` are. That is
+the second round in a row in which the checker found a defect in the round's own
+diff.
+
+**Found, measured, and NOT fixed -- written down instead.** **The DoH answers are
+discarded.** `DohResolver.ResolveAsync` is awaited at both call sites and its result
+thrown away by the `Using`, and the connection is then made **by name**
+(`Tls13Client.ConnectAsync` calls `StreamSocket.ConnectAsync(New HostName(host), ...)`),
+so the OS resolver is what actually resolves, the DoH cache dies with the object, and
+the DoH server setting currently costs one round trip and changes nothing about where
+the bytes go. That makes `DohResolver`'s own header claim -- "Every other name goes
+through DoH" -- false as the code stands. Fixing it properly means connecting to the
+resolved address while keeping the certificate name and the SNI, which is a change to
+the one transport path that cannot be verified on this host: it needs a live
+handshake and a handset. It is recorded here rather than shipped unverified.
+
+**Verified:** `check-vb.mjs` **20 groups / 0 finding(s)** with the catalogue at
+**131 keys**; `fetch-rules.mjs` **45/45** (31 plus fourteen), with the A-query
+contract measured red by re-wrapping the A call in a `Catch`, and the url and
+`Content-Length` contracts measured red by deleting the guards they exist for; every
+other referee green; the four client configurations `BUILD_EXIT=0` (Debug/ARM,
+Release/ARM, Debug/x86, Release/x86) with only the deliberate `BC40000`
+`ResourceLoader` warning. **Not verified:** that any of the new sentences is the
+right one on a phone. They say what failed; whether the person sees them, and whether
+the unguarded `OnNavigationCompleted` body was ever the cause of a real crash, needs
+the handset -- this host has no emulator and no phone.
+
 ## The loop
 
 Every change follows five steps, in order. The canonical version lives in
@@ -2411,11 +2516,12 @@ What is and is not covered:
 | `tools/proto/core-logic.mjs` | A transliteration of `CoreLogicTests.vb`. 72 assertions, exit 1 on failure. | `node`, on any machine. **This is what actually runs those assertions.** |
 | `tools/proto/remote-input.mjs` | The remote input path as source contracts: one hidden `TextBox` built once, the `SemaphoreSlim` gate over every write to the stream, the rotation that moves both viewports and sends `RESIZE`, the eight key names the keys bar offers, that every label has a key in both `.resw` files, and — since Round 14 — that **a tap is not a request to type** and that the soft keyboard is raised only by the page's own answer, which the engine must route to the screen. Eleven checks, plus `--probe`, which plants each defect (twelve mutations) and requires its check to refuse it. | `node`, on any machine. |
 | `tools/proto/remote-protocol.mjs` | The render protocol's wire format: header, every encoder and decoder, the frame splitter, and the AEAD seal both ways, checked byte-for-byte against `protocol/vectors.json` — which the SERVER's own code produced. The only statement of the protocol that neither implementation wrote. 101 checks, including both values of `FOCUS` and its refusal of a third, and — since Round 22 — that `RemoteProtocol.IsServerMessage` names exactly the eight types a server may send and nothing else. That one is a list and not a range on purpose: the question is "does this build know how to read what arrived", and a range would accept the next type somebody adds. | `node`, on any machine. |
-| `BrowserForWP/Strings/**/Resources.resw`, and the map name in `BrowserForWP.Localization/Localizer.vb` | Two languages, one key set (**130 keys**, and every literal key the code asks for must be one of them -- the `Localizer keys` group, added in Round 20; Round 22's `EngineReasonReportFailed` took it from 129 to 130), AND the name of the resource map the code asks WinRT for — the question parity was not asking, and one whose wrong answer runs silently. Round 18. | `node tools/check-vb.mjs`, group 6. The map-name inference is justified by a measurement of the built `resources.pri`, recorded in Round 18, because the PRI itself is a per-platform build output and is not committed. |
+| `BrowserForWP/Strings/**/Resources.resw`, and the map name in `BrowserForWP.Localization/Localizer.vb` | Two languages, one key set (**131 keys**, and every literal key the code asks for must be one of them -- the `Localizer keys` group, added in Round 20; Round 22's `EngineReasonReportFailed` took it from 129 to 130, and Round 23's `ShellSettingFailed` from 130 to 131), AND the name of the resource map the code asks WinRT for — the question parity was not asking, and one whose wrong answer runs silently. Round 18. | `node tools/check-vb.mjs`, group 6. The map-name inference is justified by a measurement of the built `resources.pri`, recorded in Round 18, because the PRI itself is a per-platform build output and is not committed. |
 | `tools/proto/remote-servers.mjs` | `RemoteServers.vb`: url normalisation, the primary/secondary order, duplicate collapsing, and the source contract that Core holds resource keys and not prose. | `node`, on any machine. |
 | `tools/proto/engine-choice.mjs` | The `EngineChoice` decision table -- including that an explicit Server choice is never the device engine, and that `MayFallBackToDevice` is False for it -- plus the source contract around it: the constants by name, the readiness branch on the automatic path only, the shell's gate, and the reasons as resource keys rather than sentences. | `node`, on any machine. |
 | `tools/proto/shell-guards.mjs` | The shell's event-loop guards that arrived with the merged browser shell (picker/tab re-entrancy, the completed URL, `sln` registration) and — since Round 22 — the remote channel's reporting chain as source contracts: `RemoteChannel.ReadLoopAsync` refuses a sealed frame whose type is not one this client names, `RemoteEngine.OnServerMessage` has an `Else` arm instead of falling out the bottom, a close callback that threw is kept and carried rather than discarded, and `OnRemoteNavigated` applies the engine's report inside a guard that shows `EngineReasonReportFailed`. It slices one method body per contract, because `[\s\S]*?` will otherwise credit the next method's `Catch` to the one it started in (the Round 21 lesson). | `node`, on any machine. |
-| `tools/check-vb.mjs` | 19 categories / 19 check groups over every `.vb`, `.vbproj`, `.xaml` and `.resw`, including every `{ThemeResource}` key, every project's flavour GUID and the factory GUID and separators of every `BrowserForWP.sln` entry, doc-comment structure (group 13: a `--` in an XML comment, and in a `'''` block an unmatched or unknown tag, a bare `&` — a VB hex literal like `&H10` in prose is BC42304 — or a plain `'` line that splits the block), every privileged API name and every manifest capability that would ask the platform for something it cannot grant, every API whose capability the manifest fails to declare, every declaration that names a VB keyword, and the two groups Round 20 added: every literal `Localizer.Get("...")` key exists in the `.resw` pair, and no local shadows a member of its own class (`Dim carry` inside `Carry` is the shape of that bug, and two files in the tree had one). Round 21 added a nineteenth: **every hop from a worker thread to the UI thread** (any `RunAsync` on something named `…Dispatcher`) must be `Await`ed, inside a `Try`, and inside a `Catch` that binds an exception and uses it -- an unawaited hop loses both failures it can have, an unguarded one hands them to a catch-all that cannot report them, and an empty or unbound `Catch` is the same silence with more punctuation. It found the two hops in `MainPage.xaml.vb` and passed them, and it fails when no hop is found at all rather than printing a green empty set. | `node`, on any machine. |
+| `tools/proto/fetch-rules.mjs` | The rules around the impure fetch, which is where the mistakes live: content-type and charset fallbacks, header casing, the `Accept-Encoding` trap, the pin decision, plus — since Round 23 — the two untrusted-input guards in `HttpClient13` (a url that would splice a second request into the request line, and a negative `Content-Length` or hex chunk size that would size an array as `count - 1`), the two ceilings that keep a hostile response bounded, and the DoH resolver's deliberate A/AAAA asymmetry. 45 checks. | `node`, on any machine. |
+| `tools/check-vb.mjs` | 20 categories / 20 check groups over every `.vb`, `.vbproj`, `.xaml` and `.resw`, including every `{ThemeResource}` key, every project's flavour GUID and the factory GUID and separators of every `BrowserForWP.sln` entry, doc-comment structure (group 13: a `--` in an XML comment, and in a `'''` block an unmatched or unknown tag, a bare `&` — a VB hex literal like `&H10` in prose is BC42304 — or a plain `'` line that splits the block), every privileged API name and every manifest capability that would ask the platform for something it cannot grant, every API whose capability the manifest fails to declare, every declaration that names a VB keyword, and the two groups Round 20 added: every literal `Localizer.Get("...")` key exists in the `.resw` pair, and no local shadows a member of its own class (`Dim carry` inside `Carry` is the shape of that bug, and two files in the tree had one). Round 21 added a nineteenth: **every hop from a worker thread to the UI thread** (any `RunAsync` on something named `…Dispatcher`) must be `Await`ed, inside a `Try`, and inside a `Catch` that binds an exception and uses it -- an unawaited hop loses both failures it can have, an unguarded one hands them to a catch-all that cannot report them, and an empty or unbound `Catch` is the same silence with more punctuation. It found the two hops in `MainPage.xaml.vb` and passed them, and it fails when no hop is found at all rather than printing a green empty set. Round 23 added a twentieth: **no `Catch` swallows what it caught.** An empty `Catch` must carry a comment inside the block saying why the silence was meant; a `Catch` that BINDS an exception and never reads it is the same silence with a name, and must either read the binding, carry that comment, or be written as a bare `Catch` — which is the language's own way of saying the reason is not wanted. The comment is the escape hatch on purpose: it makes the choice deliberate and reviewable. The group carries a self-test that plants both defects and both legal shapes and requires 1, 1, 0, 0 before it is trusted with the tree. It reports 0 findings, and both clauses were measured red against a planted defect. | `node`, on any machine. |
 | `tools/proto/token-inbox.mjs` | `TokenInbox.vb` -- the rules behind the page the phone serves -- and the source contracts of the shell that serves it: form decoding including malformed escapes, which of the phone's own addresses is advertised, the token's shape, the slot names, every refusal of `Review` (code first, then token, then slot, then address), plus the shell's `no-store` and CSP headers, the five-failure stop, that the token is written once and masked, that the listener is activated AND subscribed inside the per-port guard, that the start/stop handler cannot end the process, and that the hop from the socket thread to the UI thread is awaited, guarded in the handler that runs after it, and kept for the refresh when the dispatcher refused the work. 91 checks. | `node`, on any machine. |
 | `tools/keyword-probe/`, `tools/keyword-probe.cmd` | One `Dim <word> As Integer` per candidate, compiled by the real vbc, so group 17's list is measured rather than quoted. Batched, with a per-batch sentinel, because vbc 12 stops after about a hundred errors **with no message** and the first single-file version read that truncation as "legal". | `bash`, with the guest reachable. |
 | `tools/wp81-theme-keys.sh` | Regenerates `tools/wp81-theme-keys.txt`, the 523 theme-resource keys Windows Phone 8.1 defines, read from the guest's design dictionaries. | `bash`, with the guest reachable. |

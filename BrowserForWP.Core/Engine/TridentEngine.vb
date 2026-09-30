@@ -110,7 +110,10 @@ Namespace Engine
                     Return False
                 End If
                 Return markerText.Trim() = "1"
-            Catch ex As Exception
+            Catch
+                ' No document yet, or scripting unavailable. The False IS the report:
+                ' this method answers a yes/no question the shell already handles, and
+                ' the reason would be a platform string rather than an action to take.
                 Return False
             End Try
         End Function
@@ -126,7 +129,8 @@ Namespace Engine
                     Return False
                 End If
                 Return foundText.Trim().ToLowerInvariant() = "true"
-            Catch ex As Exception
+            Catch
+                ' As above: the answer is the report, and the caller shows it.
                 Return False
             End Try
         End Function
@@ -139,7 +143,8 @@ Namespace Engine
                     Return False
                 End If
                 Return markerText.Trim() = "1"
-            Catch ex As Exception
+            Catch
+                ' As above: the answer is the report, and the caller shows it.
                 Return False
             End Try
         End Function
@@ -149,7 +154,8 @@ Namespace Engine
             Try
                 Await InvokeScriptAsync(NightMode.BuildScript(enabled))
                 Return True
-            Catch ex As Exception
+            Catch
+                ' As above: the answer is the report, and the caller shows it.
                 Return False
             End Try
         End Function

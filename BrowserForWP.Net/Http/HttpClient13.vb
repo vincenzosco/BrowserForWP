@@ -216,6 +216,15 @@ Namespace Http
                 If Not Integer.TryParse(contentLength, length) Then
                     Throw New HttpProtocolException("malformed Content-Length: " & contentLength)
                 End If
+                ' A NEGATIVE length is not caught by the ceiling below, and it is not
+                ' harmless either: ReadExactlyAsync sizes an array as count - 1, so
+                ' -1 asks the runtime for a -2-element array and the framer dies with
+                ' an arithmetic exception instead of naming the header it did not
+                ' like. `Content-Length: -1` is the malformed input a hostile server
+                ' sends, and it deserves the same answer as `Content-Length: x`.
+                If length < 0 Then
+                    Throw New HttpProtocolException("negative Content-Length: " & contentLength)
+                End If
                 If length > MaxResponseBytes Then
                     Throw New HttpProtocolException("response body too large: " & length)
                 End If
@@ -239,6 +248,14 @@ Namespace Http
                                         Globalization.NumberStyles.HexNumber,
                                         Globalization.CultureInfo.InvariantCulture, size) Then
                     Throw New HttpProtocolException("malformed chunk size: " & sizeLine)
+                End If
+
+                ' Parsed as hex, which accepts a sign: "-1" is a size the ceiling
+                ' check below cannot see (output.Count - 1 is smaller, not larger),
+                ' and ReadExactlyAsync then sizes an array as count - 1. Refuse it here
+                ' rather than let the framer die on an arithmetic error.
+                If size < 0 Then
+                    Throw New HttpProtocolException("negative chunk size: " & sizeLine)
                 End If
 
                 If size = 0 Then
@@ -373,6 +390,26 @@ Namespace Http
 
         Public Shared Function Parse(url As String) As ParsedUrl
             If String.IsNullOrEmpty(url) Then Throw New ArgumentException("url required", "url")
+
+            ' The request line and every header are built by CONCATENATION, so a CR, LF
+            ' or NUL inside the url is not a bad character -- it is a second request,
+            ' or a header of the sender's choosing, smuggled into the first one. The
+            ' url can come from the address bar, from a redirect Location header or
+            ' from a setting written by hand, so this is untrusted input arriving at
+            ' the one place that concatenates it. Refused rather than escaped: nothing
+            ' legitimate contains these, and quietly rewriting them would send bytes
+            ' the caller never asked for.
+            ' Numeric codes rather than a named constant: Microsoft.VisualBasic
+            ' .ControlChars is NOT in the .NET for Windows Store apps profile (group
+            ' 12 flags it, and the guest build would answer BC30451), while ChrW and
+            ' AscW are. 13 is CR, 10 is LF, 0 is NUL.
+            For Each unsafeChar As Char In url
+                Dim charCode As Integer = AscW(unsafeChar)
+                If charCode = 13 OrElse charCode = 10 OrElse charCode = 0 Then
+                    Throw New HttpProtocolException(
+                        "url contains a control character (0x" & charCode.ToString("X2") & ")")
+                End If
+            Next
 
             Dim result As New ParsedUrl()
             Dim rest = url

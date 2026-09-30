@@ -42,6 +42,10 @@ NotInheritable Class App
                 End If
             End If
         Catch ex As Exception
+            ' Deliberately swallowed: there is no page and no status line yet -- the
+            ' Frame below has not even been created -- so there is nowhere to put a
+            ' sentence. Storage that will not answer leaves the manifest language in
+            ' place, which is what Localizer.Initialize above already resolved.
         End Try
 
         Dim rootFrame As Frame = TryCast(Window.Current.Content, Frame)

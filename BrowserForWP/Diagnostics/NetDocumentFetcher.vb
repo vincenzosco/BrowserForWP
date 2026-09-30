@@ -193,7 +193,10 @@ Namespace Diagnostics
         Private Shared Function TryGetEncoding(name As String) As System.Text.Encoding
             Try
                 Return System.Text.Encoding.GetEncoding(name)
-            Catch ex As Exception
+            Catch
+                ' Nothing is a real answer here: the caller falls back to UTF-8, and a
+                ' statement that this platform does not have the codepage is a fact
+                ' about the platform rather than a failure of the fetch.
                 Return Nothing
             End Try
         End Function

@@ -173,6 +173,9 @@ Namespace Engine
                 RemoveHandler closing.ConnectionReceived, AddressOf OnConnectionReceived
                 closing.Dispose()
             Catch
+                ' A listener that is already gone cannot be unsubscribed from or
+                ' disposed again, and nothing here can act on the difference: Close
+                ' is called to reach the state this catch describes.
             End Try
         End Sub
 
@@ -223,6 +226,8 @@ Namespace Engine
                 Try
                     socket.Dispose()
                 Catch
+                    ' The socket is being closed, not used: a failure to close one is
+                    ' not news, and the reason above (if any) is the one worth keeping.
                 End Try
             End Try
         End Sub

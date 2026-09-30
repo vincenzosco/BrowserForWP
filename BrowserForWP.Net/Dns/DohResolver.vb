@@ -105,10 +105,16 @@ Namespace Dns
                 ' No IPv6 records is a normal answer, not a failure.
             End Try
 
-            Try
-                answers.AddRange(Await QueryAsync(host, TypeA))
-            Catch ex As HttpProtocolException
-            End Try
+            ' The A query is NOT wrapped the same way, and the asymmetry is the point.
+            ' A host with no A record is answered with a successful response that
+            ' carries zero answers -- ParseResponse returns an empty list, no
+            ' exception -- so the only way this call throws is that the QUERY failed:
+            ' the DoH server answered HTTP 500, or the transport died, or the answer
+            ' could not be parsed. Swallowing that used to end the method at the
+            ' "no address records" line below, replacing the real reason with a false
+            ' one. The caller treats a resolution failure as non-fatal and falls back
+            ' to the OS resolver, so the honest thing is to hand it the truth.
+            answers.AddRange(Await QueryAsync(host, TypeA))
 
             If answers.Count = 0 Then
                 Throw New HttpProtocolException("no address records for " & host)

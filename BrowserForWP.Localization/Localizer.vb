@@ -164,7 +164,11 @@ Namespace Localization
             Try
                 _loaderUnavailable = False
                 Return New ResourceLoader(ResourceMap)
-            Catch ex As Exception
+            Catch
+                ' _loaderUnavailable IS the report: Get falls back to the key name and
+                ' stops retrying a map the platform will not hand out. Kept rather than
+                ' printed because this runs during static initialisation, before any
+                ' screen exists to print it on.
                 _loaderUnavailable = True
                 Return Nothing
             End Try
