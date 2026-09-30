@@ -163,6 +163,24 @@ Namespace Localization
         Private Shared Function TryCreateLoader() As ResourceLoader
             Try
                 _loaderUnavailable = False
+
+                ' A DELIBERATE use of a deprecated API, and its BC40000 is silenced
+                ' once for this project in BrowserForWP.Localization.vbproj rather than
+                ' tolerated in the log on every build. VB 12 -- the VS2013 toolchain
+                ' this project compiles on -- has no `#Disable Warning` directive
+                ' (that arrived in VB 14), so a per-project NoWarn is the only
+                ' supported form; the guest build is what proved that.
+                '
+                ' Why keep the constructor: the suggested replacement,
+                ' GetForCurrentView(name), is tied to the view's cached
+                ' ResourceContext, so re-creating the loader after
+                ' ApplyLanguageQualifier changed the Language qualifier would hand back
+                ' the same stale resolution and the runtime language switch would stop
+                ' working. This constructor builds a NEW loader each call, which is what
+                ' a rebuilt-on-every-switch loader needs. The deprecation note names a
+                ' "TBD" release that never shipped for Windows Phone 8.1, so the API is
+                ' permanent here. Recorded in docs/MAINTAINING.md Round 24; do not
+                ' "fix" this without a handset to test the language switch on.
                 Return New ResourceLoader(ResourceMap)
             Catch
                 ' _loaderUnavailable IS the report: Get falls back to the key name and

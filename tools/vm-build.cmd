@@ -68,8 +68,9 @@ if not errorlevel 1 (
 echo.
 echo === Warnings ===
 findstr /R /C:"warning BC" /C:"warning MSB" /C:"warning APPX" "%LOG%" || echo none
-rem Two BC40000 warnings on ResourceLoader are expected and deliberate; see
-rem docs/MAINTAINING.md. Any OTHER warning here is new and worth a look.
+rem No warnings are expected. The two ResourceLoader BC40000s are suppressed at
+rem their call site in Localizer.vb, with the reason recorded there and in
+rem docs/MAINTAINING.md. Any warning here is new and worth a look.
 
 echo === BUILD_EXIT=%RC% ===
 

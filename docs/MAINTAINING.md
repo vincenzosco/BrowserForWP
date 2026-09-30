@@ -534,14 +534,22 @@ defects were found and verified by experiment:
    after the change. `python3 tools/make_logo.py` and the `.vbproj` `<Content>`
    items were updated together — keep them in step.
 
-**Remaining warnings, all understood and accepted:** two × `BC40000` on
-`New ResourceLoader(ResourceMap)` in `Localizer.vb`. The suggested replacement,
-`ResourceLoader.GetForCurrentView(name)`, returns a **cached** loader, so it would
-silently stop honoring a runtime language change — which `Localizer` depends on.
-The deprecated constructor is the one with the semantics this code needs, the
-warning is a forward-compatibility note about a "TBD" future release that will
-never ship for WP8.1, and the alternative cannot be tested on a handset from here.
-A deliberate, documented trade-off.
+**No warnings remain, and the last one is silenced in the project that raises it.**
+The `BC40000` on `New ResourceLoader(ResourceMap)` in `Localizer.vb` is silenced by
+`<NoWarn>$(NoWarn),40000</NoWarn>` in `BrowserForWP.Localization.vbproj` -- VB 12
+(the VS2013 toolchain) has no `#Disable Warning` directive, which is VB 14+, so a
+per-project `NoWarn` is the only supported form; the guest build proved that by
+rejecting the directive with `BC30248`. The reason sits in a comment beside the
+line. The suggested
+replacement, `ResourceLoader.GetForCurrentView(name)`, is tied to the view's
+**cached** `ResourceContext`, so re-creating the loader after
+`ApplyLanguageQualifier` changed the Language qualifier would hand back the same
+stale resolution and the runtime language switch would stop working — the
+constructor is the one with the semantics this code needs. The deprecation note
+names a "TBD" release that never shipped for WP8.1, so the API is permanent here.
+Revisit only with a handset to test the switch on; until then a `BC40000`
+reappearing anywhere means this suppression was lost, not that new noise appeared.
+Round 24.
 
 **`WMC9999` is a diagnostic from the VS2013 XAML compiler, and it is harmless.**
 It is not a defect in this codebase and it must not be chased with source edits.
@@ -2482,6 +2490,56 @@ Release/ARM, Debug/x86, Release/x86) with only the deliberate `BC40000`
 right one on a phone. They say what failed; whether the person sees them, and whether
 the unguarded `OnNavigationCompleted` body was ever the cause of a real crash, needs
 the handset -- this host has no emulator and no phone.
+
+### Round 24 -- the two warnings are silenced where they are raised
+
+**The ask:** a Visual Studio session's error list, pasted whole. Four rows: two
+deployment failures (`DEP6100` / `DEP6200`, "no Windows Phone was detected"), the
+`WMC9999` internal error this file already characterises, and a `BC40000` on
+`Localizer.vb:166`.
+
+Three of the four are not source defects, and this round changed nothing about
+them:
+
+* **`DEP6100` / `DEP6200`.** No phone is connected to the Windows guest and no
+  emulator is installed there. Nothing in the tree can make a deployment target
+  exist; the deployment errors are the absence of a device, not a property of the
+  code.
+* **`WMC9999` (Italian: "la chiave specificata non era presente nel dizionario").**
+  This is "The given key was not present in the dictionary", Error 1 in that
+  list. It is the VS2013 XAML compiler's own internal error, measured in Round 4:
+  present in 12/12 builds, `App.xbf` / `MainPage.xbf` byte-identical across every
+  one of them, independent of the theme keys, and not silenced by any of the five
+  source hypotheses tried. It does not fail the build, and `tools/vm-build.cmd`
+  allow-lists it by name.
+
+The fourth row is a real, fixable one, and the fix is care rather than a rewrite.
+The warning is on the deliberately retained pre-8.1 `ResourceLoader` constructor --
+Round 4's "Deliberately out of scope". Every other `BC40000` in this tree was
+retired by *moving to the replacement API* (`WebView.NavigationFailed` and
+`DataPackage.SetUri`, Round 5), and that is still the rule. This one is the
+documented exception: the replacement, `ResourceLoader.GetForCurrentView(name)`,
+is bound to the view's cached `ResourceContext`, and `Localizer` re-creates its
+loader precisely to *discard* that resolution after a language change. Switching
+would silently disable the runtime language switch, which cannot be verified
+without a handset. So the warning is silenced in the project file with
+`<NoWarn>$(NoWarn),40000</NoWarn>`, and the reason is written beside the line
+instead of only down here.
+
+**A platform fact learned by breaking it first.** The obvious way to silence one
+warning is a local `#Disable Warning BC40000`. The guest build refused it with
+`BC30248: Previsto 'If', 'ElseIf', 'Else', 'End If', 'Const' o 'Region'` at the
+directive's own line, because that directive did not exist until VB 14 -- VS2015.
+This project compiles with vbc 12. A suppression that no checker here can reject
+and that reads as valid to a modern eye was caught only by the real compiler; the
+per-project `NoWarn` is what VB 12 accepts.
+
+**Verified:** `check-vb.mjs` **20 groups / 0 finding(s)**; the four client
+configurations `BUILD_EXIT=0` (Debug/ARM, Release/ARM, Debug/x86, Release/x86)
+with **`Warnings: none`** -- the first clean warning log this tree has had, and it
+is measured, not assumed. **Not verified:** that the runtime language switch still
+works on a handset; this change cannot alter it, which is the reason it took this
+form and not the API swap.
 
 ## The loop
 

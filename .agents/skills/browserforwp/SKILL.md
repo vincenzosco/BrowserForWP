@@ -232,7 +232,13 @@ checker does not know this member.
   `DataPackage.SetUri`. Use `NavigationCompleted`'s `IsSuccess` /
   `WebErrorStatus` — which carry the reason the deprecated event does not — and
   `DataPackage.SetWebLink`. A build with zero warnings is the goal; a new
-  `BC40000` is a design question, not noise to allow-list.
+  `BC40000` is a design question, not noise to allow-list. One exception stands,
+  named here so it is not mistaken for a violation: the `ResourceLoader`
+  constructor in `Localizer.vb`, silenced by `<NoWarn>$(NoWarn),40000</NoWarn>` in
+  `BrowserForWP.Localization.vbproj` because the replacement is bound to the
+  view's cached `ResourceContext` (Round 24). **There is no `#Disable Warning`
+  directive here:** that is VB 14+ (VS2015) and this toolchain is vbc 12, which
+  rejects it with `BC30248`. Silence a warning with `NoWarn`, never a pragma.
 
 **Sixth — a merged pull request is unreviewed code until the guest build says
 otherwise.** PR #2 arrived as twenty commits that had never been compiled on the
@@ -292,7 +298,7 @@ verified if you skipped its command.
 | Whether a solution actually loads | `tools\vm-devenv.cmd` in the guest | `seven projects loaded and built`, `DEVENV_EXIT=0`, and no `not installed` line. The only oracle for the IDE's project system: `MSBuild` reads neither the type GUIDs nor the text-scan trap, so it is green when the IDE cannot open a project at all. It is a script and not a command line because `cmd /c` cannot carry those quotes through the host (Round 14) |
 | The theme-key oracle itself | `bash tools/wp81-theme-keys.sh` | `wrote .../tools/wp81-theme-keys.txt (523 keys)` |
 | `BrowserForWP/Assets/**` | `python3 tools/make_logo.py` | one line per generated PNG, exit code 0 |
-| UI / XAML / VB app code | Build in the guest: `tools\vm-build.cmd /t:Rebuild` | `BUILD_EXIT=0`, no `BC` errors; only the two deliberate `ResourceLoader` warnings |
+| UI / XAML / VB app code | Build in the guest: `tools\vm-build.cmd /t:Rebuild` | `BUILD_EXIT=0`, no `BC` errors, `Warnings: none` — the `ResourceLoader` `BC40000` is silenced per-project via `NoWarn` (Round 24) |
 | Unexplained build diagnostics | `RUNS=4 bash tools/wmc9999-probe.sh` | `distinct XBF hash pairs across 12 runs: 1` |
 | TLS / DoH / sockets | Deploy to handset, run **Diagnostics → TLS probe** | reports negotiated `TLS1.3` |
 
@@ -657,10 +663,12 @@ Three things about that command, all of which cost time to learn:
   incremental path sees unchanged projects as up to date and skips their compile
   entirely, so it produces a *cleaner* log than a clean build does. This is not
   hypothetical: an incremental run reported "Warnings: none" while
-  `BrowserForWP.Localization` still had two `BC40000`s that a rebuild shows. Two
-  other `BC40000`s were removed in Round 5 — `WebView.NavigationFailed` and
-  `DataPackage.SetUri` — and the only warnings that should remain are the two
-  deliberate `ResourceLoader` ones documented in `docs/MAINTAINING.md`.
+  `BrowserForWP.Localization` still had two `BC40000`s that a rebuild shows —
+  which is how those two were found. Every warning-producing API is now gone:
+  `WebView.NavigationFailed` and `DataPackage.SetUri` were retired in Round 5,
+  and the deliberate `ResourceLoader` `BC40000` is silenced per-project via
+  `NoWarn` (Round 24). A rebuild should print `Warnings: none`; anything else is
+  new.
 
 A previous revision of this section claimed the ARM64 guest "cannot host this
 build" and that a real build needs an x64 host. **That was wrong.** It was
