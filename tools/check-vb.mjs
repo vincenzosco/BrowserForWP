@@ -37,6 +37,12 @@
 //   14. Project flavour        the flavour GUID the IDE uses to resolve references
 //   15. Privileged access      JIT, process creation, full-trust capabilities
 //   16. Capability requirements  the code needs a capability the manifest lacks
+//   17. Localizer keys        every literal key the code asks for exists
+//   18. Local shadowing       no local hides a member of its own class
+//   19. UI-thread hops        every Dispatcher RunAsync is awaited, guarded and
+//                              reported -- added in Round 21, after two hops in
+//                              the token page were fire-and-forget and lost a
+//                              verdict in a Catch that could not say so
 //
 //  Group 12's list is not a guess about what the profile removes: every entry in
 //  it was paid for by a guest build that failed. FontStyles is the latest.
@@ -1694,6 +1700,150 @@ function checkLocalShadowing() {
   }
 }
 
+// ── 19. Hops from a worker thread to the UI thread ──────────────────────────
+// WHAT THIS IS FOR. The token page answers a socket, so its verdicts have to
+// cross to the UI thread to be applied, and in Round 20 those two
+// `Dispatcher.RunAsync` calls were fire-and-forget. That loses BOTH failures the
+// hop can have -- the dispatcher refusing to schedule the work, and the handler it
+// scheduled throwing -- because the returned IAsyncAction is the only place either
+// one is visible, and the socket handler's own Catch then eats whatever falls out.
+// The browser had already been told the token was saved. Round 21 fixed those two
+// by hand; this group is the rule that keeps the next hop, in a file nobody has
+// written yet, from being written the same way.
+//
+// THREE THINGS ARE ASKED OF EVERY HOP, and each of them is a real defect otherwise:
+//
+//   * it is AWAITED. An unawaited IAsyncAction is an observation nobody makes.
+//   * it is INSIDE a Try -- found by walking back to the nearest enclosing `Try`
+//     written at a smaller indent, stopping at the member boundary. Outside one, a
+//     failure leaves the handler that owns this thread and lands in whatever
+//     catch-all is above it, which is exactly where the Round 20 failure went to
+//     die.
+//   * that Try's Catch BINDS an exception and USES it. A bare `Catch`, or a body
+//     that never touches its binding, is a report that cannot say what failed --
+//     the same silence with more punctuation.
+function checkUiThreadHops() {
+  heading('Hops to the UI thread (awaited, inside a Try, and reported)');
+
+  // Any call to RunAsync/TryRunAsync on something whose name ends in
+  // `Dispatcher`: `Dispatcher.RunAsync`, `Me.Dispatcher.RunAsync`,
+  // `_uiDispatcher.RunAsync`. VB is case-insensitive, so this is too.
+  const HOP = /(?:\b|\.)[A-Za-z_]*Dispatcher\s*\.\s*(?:Try)?RunAsync\s*\(/i;
+  const MEMBER_EDGE =
+    /^(?:(?:Public|Private|Protected|Friend|Shared|Async|Overrides|Overridable|NotOverridable|MustOverride|Static|Partial)\s+)*(?:Sub|Function|Property)\s/;
+
+  const indentOf = (line) => line.length - line.trimStart().length;
+  let anyBad = false;
+  let hops = 0;
+
+  for (const project of projects) {
+    for (const src of walk(project.dir, (f) => f.endsWith('.vb'))) {
+      const lines = cleanLines(fs.readFileSync(src, 'utf8'));
+      lines.forEach((line, idx) => {
+        if (!HOP.test(line)) return;
+        hops++;
+        const call = line.trim();
+        const indent = indentOf(line);
+
+        if (!/^\s*Await\s/.test(line)) {
+          fail('ui-hop', src,
+            `${call} — this hop's IAsyncAction is never read, so both the dispatcher `
+            + 'refusing the work and the handler it scheduled throwing end up in the '
+            + "Catch above this thread. Write `Await Dispatcher.RunAsync(...)` inside a Try.",
+            idx + 1);
+          anyBad = true;
+        }
+
+        // The nearest enclosing Try, walking back to the member boundary rather
+        // than to a fixed indent: this repository indents members at 4 in the app
+        // project and at 8 in the libraries.
+        let tryAt = -1;
+        for (let i = idx - 1; i >= 0; i--) {
+          const text = lines[i].trim();
+          if (text.length === 0) continue;
+          if (MEMBER_EDGE.test(text) || /^End (?:Sub|Function|Property)\b/.test(text)) break;
+          if (indentOf(lines[i]) < indent && /^Try\s*$/.test(text)) { tryAt = i; break; }
+        }
+        if (tryAt < 0) {
+          fail('ui-hop', src,
+            `${call} — no Try encloses this hop. A failure here leaves the method `
+            + 'that owns this thread and is caught somewhere that cannot report it.',
+            idx + 1);
+          anyBad = true;
+          return;
+        }
+
+        // Its Catch, at the Try's own indent: a nested Try's Catch is deeper and is
+        // not this block's.
+        const tryIndent = indentOf(lines[tryAt]);
+        let catchAt = -1;
+        for (let i = tryAt + 1; i < lines.length; i++) {
+          const text = lines[i].trim();
+          if (text.length === 0) continue;
+          if (indentOf(lines[i]) !== tryIndent) continue;
+          if (/^Catch\b/.test(text)) { catchAt = i; break; }
+          if (/^End Try\b/.test(text)) break;      // Try with only a Finally
+        }
+        if (catchAt < 0) {
+          fail('ui-hop', src,
+            `${call} — the enclosing Try has no Catch, so a failed hop is not reported `
+            + 'anywhere. Add a Catch that says what went wrong.',
+            idx + 1);
+          anyBad = true;
+          return;
+        }
+
+        const bound = /^Catch\s+([A-Za-z_]\w*)\s+As\b/.exec(lines[catchAt].trim());
+        if (!bound) {
+          fail('ui-hop', src,
+            `${lines[catchAt].trim()} — this Catch binds no exception, so it cannot say `
+            + `WHAT failed. Bind it (\`Catch ex As Exception\`) and report \`ex\`.`,
+            catchAt + 1);
+          anyBad = true;
+          return;
+        }
+
+        const body = [];
+        for (let i = catchAt + 1; i < lines.length; i++) {
+          const text = lines[i].trim();
+          if (text.length === 0) continue;
+          if (indentOf(lines[i]) <= tryIndent) break;
+          body.push(text);
+        }
+        if (body.length === 0) {
+          fail('ui-hop', src,
+            `${call} — the Catch that guards this hop is EMPTY: the hop's failure is `
+            + 'swallowed, which is the silence this rule exists for.',
+            idx + 1);
+          anyBad = true;
+        } else if (!body.some((t) => new RegExp(`\\b${bound[1]}\\b`).test(t))) {
+          fail('ui-hop', src,
+            `${call} — the Catch binds \`${bound[1]}\` and never uses it, so the report `
+            + 'cannot name what failed. Pass it to whatever says so.',
+            idx + 1);
+          anyBad = true;
+        }
+      });
+    }
+  }
+
+  // A guard with no subject is not a green guard. If every hop disappears, this
+  // group has to say so rather than pass on an empty set -- the failure mode the
+  // Localizer-keys group hit in Round 20, where "0 asked for" printed as a tick.
+  if (hops === 0) {
+    fail('ui-hop', '(projects)',
+      'no hop to the UI thread was found in any project, which means this group just '
+      + 'checked nothing. If the marshalling moved to another API, teach this group '
+      + 'that API rather than deleting the rule.');
+    anyBad = true;
+  }
+
+  if (!anyBad) {
+    ok(`every hop to the UI thread is awaited, inside a Try, and reported with the `
+      + `exception it caught (${hops} hop(s) checked)`);
+  }
+}
+
 function checkReservedNames() {
   heading('reserved words used as names');
   let anyBad = false;
@@ -1778,6 +1928,7 @@ const GROUPS = [
   checkLocalizerKeys,
   checkLocalShadowing,
   checkReservedNames,
+  checkUiThreadHops,
 ];
 
 for (const group of GROUPS) group();

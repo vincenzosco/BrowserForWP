@@ -278,7 +278,8 @@ verified if you skipped its command.
 | Any claim about re-configuring Trident | `node tools/proto/ie-adapt.mjs` | `9/9 checks passed` |
 | Any claim about leaving the AppContainer, or about getting JIT memory | `node tools/proto/sandbox-escape.mjs` | `15/15 checks passed` |
 | `BrowserForWP.Polyfill/compat.js` | `node tools/check-polyfill.mjs` | `is valid ES5` |
-| Any `.vb`, `.vbproj`, `.xaml` or `.resw` | `node tools/check-vb.mjs` | `0 finding(s)`, exit code 0 (18 groups over 18 categories) |
+| Any `.vb`, `.vbproj`, `.xaml` or `.resw` | `node tools/check-vb.mjs` | `0 finding(s)`, exit code 0 (19 groups over 19 categories) |
+| A hop from a worker thread to the UI thread (any `RunAsync` on something named `…Dispatcher`) | `node tools/check-vb.mjs` | `0 finding(s)`; group 19. It fails an unawaited hop, a hop outside a `Try`, a `Try` with no `Catch`, a `Catch` that binds no exception, a `Catch` whose body never uses its binding, an empty `Catch`, AND a run in which no hop was found at all (a guard with nothing to look at is not a green guard). Every one of those was measured red against a planted defect |
 | A declaration that names a VB keyword (`Dim next`, `Function Error`) | `node tools/check-vb.mjs` | `0 finding(s)`; group 17. Its word list is measured by `tools/keyword-probe.cmd`, not quoted from the language reference |
 | A literal `Localizer.Get("…")` key, or a local that shadows a member of its own class | `node tools/check-vb.mjs` | `0 finding(s)`. Two groups added in Round 20: every literal key the code asks for exists in the `.resw` pair (a mistyped key shows its own name on the screen), and no local hides a member of its own class — `Dim carry` inside the method `Carry` is the shape, and it found two files that predate the round. A local wins for the WHOLE method, including calls written above it |
 | Any `'''` doc comment, and any `Imports` of a BrowserForWP namespace | `node tools/check-vb.mjs` | `0 finding(s)`; group 13 balances doc-comment tags and refuses a plain `'` line stranded inside a `'''` block, and group 2 composes NESTED `Namespace` blocks. Both cost real warnings in Round 9 |
@@ -405,7 +406,7 @@ BrowserForWP/Engine/TokenPage.vb ← the page the phone serves so a token is pas
                                  of HTTP a browser actually sends, and the form.
                                  Every sentence from Localizer, every decision
                                  from BrowserForWP.Core/Engine/Remote/TokenInbox.vb
-tools/check-vb.mjs            ← 18 categories / 18 check groups of static
+tools/check-vb.mjs            ← 19 categories / 19 check groups of static
                                  VB/XAML/project/resw/theme-key/flavour/
                                  import/name-legality/doc-comment checks, plus
                                  every literal Localizer key and every local that

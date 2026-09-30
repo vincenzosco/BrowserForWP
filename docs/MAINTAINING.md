@@ -2256,6 +2256,24 @@ deleting ApplyPendingVerdict's own guard left it GREEN, because `[\s\S]*?` match
 it started in. The three checks now slice ONE method body each, from its signature to
 the next `End Sub`, and each was re-measured red against its own defect.
 
+**And the rule that keeps the next hop from being written the same way.** Those two
+fixes were hand work in one file, so `check-vb.mjs` gained a nineteenth group: every
+`RunAsync` on anything named `…Dispatcher`, anywhere in the four projects, must be
+`Await`ed, must sit inside a `Try` -- found by walking back to the nearest enclosing
+`Try` written at a smaller indent, stopping at the member boundary, since this
+repository indents members at 4 in the app project and at 8 in the libraries -- and
+that `Try`'s `Catch` must BIND an exception and USE it. Each clause answers a defect:
+an unawaited hop is the Round 20 bug; a hop outside a `Try` hands its failure to
+whatever catch-all is above the socket handler; a `Try` with only a `Finally`, an
+empty `Catch`, or a `Catch` that never touches its binding is the same silence with
+more punctuation. It found exactly the two hops in `MainPage.xaml.vb` and passed
+them, and it FAILS when it finds no hop at all rather than printing a green empty
+set -- the failure mode the Localizer-keys group measured in Round 20, where "0 asked
+for" printed as a tick. Seven planted defects were used to prove it can see its own
+subject: no `Await`, the hop moved out of the `Try`, the `Try` left with only a
+`Finally`, a bare `Catch`, an empty `Catch`, a `Catch` that binds `ex` and never uses
+it, and every hop renamed away.
+
 **What is NOT known, and is written down rather than implied.** The root cause has
 not been seen from here: there is no emulator on this host (see "Emulators do not
 work here"), the handset is the owner's, and a first-chance line names an exception
@@ -2270,7 +2288,7 @@ now reports what it could not do."
 that were there (two for the guards, three for the hop), and each new one was
 watched going red against a planted defect before it was trusted -- every other
 referee green,
-`check-vb.mjs` **18 groups / 0 finding(s)** with the catalogue at **129 keys**, and
+`check-vb.mjs` **19 groups / 0 finding(s)** with the catalogue at **129 keys**, and
 the four client configurations `BUILD_EXIT=0` (Debug/ARM, Release/ARM, Debug/x86,
 Release/x86). **Not verified:** whether either guard is the defect the report came
 from, and whether the awaited hop ever fails on a real phone, which needs the
@@ -2312,7 +2330,7 @@ What is and is not covered:
 | `BrowserForWP/Strings/**/Resources.resw`, and the map name in `BrowserForWP.Localization/Localizer.vb` | Two languages, one key set (**129 keys**, and every literal key the code asks for must be one of them -- the `Localizer keys` group, added in Round 20), AND the name of the resource map the code asks WinRT for — the question parity was not asking, and one whose wrong answer runs silently. Round 18. | `node tools/check-vb.mjs`, group 6. The map-name inference is justified by a measurement of the built `resources.pri`, recorded in Round 18, because the PRI itself is a per-platform build output and is not committed. |
 | `tools/proto/remote-servers.mjs` | `RemoteServers.vb`: url normalisation, the primary/secondary order, duplicate collapsing, and the source contract that Core holds resource keys and not prose. | `node`, on any machine. |
 | `tools/proto/engine-choice.mjs` | The `EngineChoice` decision table -- including that an explicit Server choice is never the device engine, and that `MayFallBackToDevice` is False for it -- plus the source contract around it: the constants by name, the readiness branch on the automatic path only, the shell's gate, and the reasons as resource keys rather than sentences. | `node`, on any machine. |
-| `tools/check-vb.mjs` | 18 categories / 18 check groups over every `.vb`, `.vbproj`, `.xaml` and `.resw`, including every `{ThemeResource}` key, every project's flavour GUID and the factory GUID and separators of every `BrowserForWP.sln` entry, doc-comment structure, every privileged API name and every manifest capability that would ask the platform for something it cannot grant, every API whose capability the manifest fails to declare, every declaration that names a VB keyword, and the two groups Round 20 added: every literal `Localizer.Get("...")` key exists in the `.resw` pair, and no local shadows a member of its own class (`Dim carry` inside `Carry` is the shape of that bug, and two files in the tree had one). | `node`, on any machine. |
+| `tools/check-vb.mjs` | 19 categories / 19 check groups over every `.vb`, `.vbproj`, `.xaml` and `.resw`, including every `{ThemeResource}` key, every project's flavour GUID and the factory GUID and separators of every `BrowserForWP.sln` entry, doc-comment structure, every privileged API name and every manifest capability that would ask the platform for something it cannot grant, every API whose capability the manifest fails to declare, every declaration that names a VB keyword, and the two groups Round 20 added: every literal `Localizer.Get("...")` key exists in the `.resw` pair, and no local shadows a member of its own class (`Dim carry` inside `Carry` is the shape of that bug, and two files in the tree had one). Round 21 added a nineteenth: **every hop from a worker thread to the UI thread** (any `RunAsync` on something named `…Dispatcher`) must be `Await`ed, inside a `Try`, and inside a `Catch` that binds an exception and uses it -- an unawaited hop loses both failures it can have, an unguarded one hands them to a catch-all that cannot report them, and an empty or unbound `Catch` is the same silence with more punctuation. It found the two hops in `MainPage.xaml.vb` and passed them, and it fails when no hop is found at all rather than printing a green empty set. | `node`, on any machine. |
 | `tools/proto/token-inbox.mjs` | `TokenInbox.vb` -- the rules behind the page the phone serves -- and the source contracts of the shell that serves it: form decoding including malformed escapes, which of the phone's own addresses is advertised, the token's shape, the slot names, every refusal of `Review` (code first, then token, then slot, then address), plus the shell's `no-store` and CSP headers, the five-failure stop, that the token is written once and masked, that the listener is activated AND subscribed inside the per-port guard, that the start/stop handler cannot end the process, and that the hop from the socket thread to the UI thread is awaited, guarded in the handler that runs after it, and kept for the refresh when the dispatcher refused the work. 91 checks. | `node`, on any machine. |
 | `tools/keyword-probe/`, `tools/keyword-probe.cmd` | One `Dim <word> As Integer` per candidate, compiled by the real vbc, so group 17's list is measured rather than quoted. Batched, with a per-batch sentinel, because vbc 12 stops after about a hundred errors **with no message** and the first single-file version read that truncation as "legal". | `bash`, with the guest reachable. |
 | `tools/wp81-theme-keys.sh` | Regenerates `tools/wp81-theme-keys.txt`, the 523 theme-resource keys Windows Phone 8.1 defines, read from the guest's design dictionaries. | `bash`, with the guest reachable. |
